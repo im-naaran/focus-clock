@@ -16,4 +16,5 @@ struct RtcServiceState {
 void rtcServiceBegin(RtcServiceState &service, AppState &app, uint32_t nowMs);
 bool rtcServiceUpdate(RtcServiceState &service, AppState &app, uint32_t nowMs);
 bool rtcServiceForceRead(RtcServiceState &service, AppState &app, uint32_t nowMs);
+uint32_t rtcServiceNextReadDueMs(const RtcServiceState &service);
 const char *rtcServiceStatusText(const RtcServiceState &service, const AppState &app);

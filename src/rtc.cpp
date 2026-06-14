@@ -31,6 +31,11 @@ static uint8_t ds1302ReadByte() {
   return value;
 }
 
+static void ds1302IdleIo() {
+  pinMode(PIN_DS1302_IO, OUTPUT);
+  digitalWrite(PIN_DS1302_IO, LOW);
+}
+
 static uint8_t fromBcd(uint8_t value) {
   return ((value >> 4) * 10) + (value & 0x0F);
 }
@@ -51,6 +56,7 @@ static uint8_t ds1302ReadRegister(uint8_t reg) {
   ds1302WriteByte(0x81 | ((reg & 0x1F) << 1));
   const uint8_t value = ds1302ReadByte();
   digitalWrite(PIN_DS1302_CE, LOW);
+  ds1302IdleIo();
   delayMicroseconds(4);
   return value;
 }
@@ -63,6 +69,7 @@ static void ds1302WriteRegister(uint8_t reg, uint8_t value) {
   ds1302WriteByte(0x80 | ((reg & 0x1F) << 1));
   ds1302WriteByte(value);
   digitalWrite(PIN_DS1302_CE, LOW);
+  ds1302IdleIo();
   delayMicroseconds(4);
 }
 
@@ -110,6 +117,7 @@ void rtcBegin() {
   pinMode(PIN_DS1302_IO, OUTPUT);
   digitalWrite(PIN_DS1302_CE, LOW);
   digitalWrite(PIN_DS1302_SCLK, LOW);
+  digitalWrite(PIN_DS1302_IO, LOW);
 }
 
 bool rtcReadTime(RtcTime &time) {
@@ -148,7 +156,9 @@ RtcRawRegisters rtcReadRawRegisters() {
   raw.month = ds1302ReadRegister(0x04);
   raw.day = ds1302ReadRegister(0x05);
   raw.year = ds1302ReadRegister(0x06);
+  ds1302IdleIo();
   raw.control = ds1302ReadRegister(0x07);
+  ds1302IdleIo();
   return raw;
 }
 
@@ -166,13 +176,16 @@ bool rtcSetTime(const RtcTime &time) {
   ds1302WriteRegister(0x05, toBcd(time.day));
   ds1302WriteRegister(0x06, toBcd(static_cast<uint8_t>(time.year - 2000)));
   ds1302WriteRegister(0x07, 0x80);
+  ds1302IdleIo();
 
   delay(20);
-  return bcdSecondWithinWriteWindow(ds1302ReadRegister(0x00), time.second) &&
-         ds1302ReadRegister(0x01) == toBcd(time.minute) &&
-         ds1302ReadRegister(0x02) == toBcd(time.hour) &&
-         ds1302ReadRegister(0x03) == toBcd(time.date) &&
-         ds1302ReadRegister(0x04) == toBcd(time.month) &&
-         ds1302ReadRegister(0x05) == toBcd(time.day) &&
-         ds1302ReadRegister(0x06) == toBcd(static_cast<uint8_t>(time.year - 2000));
+  const bool ok = bcdSecondWithinWriteWindow(ds1302ReadRegister(0x00), time.second) &&
+                  ds1302ReadRegister(0x01) == toBcd(time.minute) &&
+                  ds1302ReadRegister(0x02) == toBcd(time.hour) &&
+                  ds1302ReadRegister(0x03) == toBcd(time.date) &&
+                  ds1302ReadRegister(0x04) == toBcd(time.month) &&
+                  ds1302ReadRegister(0x05) == toBcd(time.day) &&
+                  ds1302ReadRegister(0x06) == toBcd(static_cast<uint8_t>(time.year - 2000));
+  ds1302IdleIo();
+  return ok;
 }

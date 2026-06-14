@@ -16,7 +16,7 @@ static constexpr uint32_t SETTING_BLINK_MS = 500;
 static constexpr uint32_t RTC_SHORT_REFRESH_MS = 1000;
 static constexpr uint32_t RTC_NORMAL_MAX_REFRESH_MS = 30000;
 static constexpr uint32_t RTC_MINUTE_REFRESH_GRACE_MS = 50;
-static constexpr uint32_t RTC_AUTO_INIT_DELAY_MS = 1000;
+static constexpr uint32_t RTC_AUTO_INIT_DELAY_MS = 2000;
 
 // Input feedback.
 static constexpr uint16_t INPUT_LED_FLASH_MS = 300;
@@ -24,6 +24,7 @@ static constexpr uint8_t INPUT_LED_BRIGHTNESS = 8;
 
 // Light Sleep.
 static constexpr uint64_t IDLE_LIGHT_SLEEP_US = 1000000ULL;
+static constexpr uint32_t LIGHT_SLEEP_MIN_TIMER_MS = 50;
 static constexpr uint32_t WAKE_INPUT_HOLD_MS = 80;
 static constexpr uint32_t WAKE_BUTTON_REPEAT_GUARD_MS = 180;
 

@@ -91,8 +91,10 @@ void setup() {
   setCpuFrequencyMhz(CPU_FREQUENCY_MHZ);
   disableRadios();
 
-  Serial.begin(115200);
-  delay(300);
+  if (ENABLE_SERIAL_LOGGING) {
+    Serial.begin(115200);
+    delay(300);
+  }
 
   feedbackBegin();
   rtcBegin();
@@ -111,7 +113,9 @@ void setup() {
   sleepManagerBegin();
   app.displayDirty = true;
 
-  Serial.printf("focus-clock ready, CPU %u MHz\n", getCpuFrequencyMhz());
+  if (ENABLE_SERIAL_LOGGING) {
+    Serial.printf("focus-clock ready, CPU %u MHz\n", getCpuFrequencyMhz());
+  }
 }
 
 void loop() {
@@ -144,5 +148,5 @@ void loop() {
 
   feedbackUpdate(nowMs);
   sleepManagerUpdateButtonRelease(sleepState);
-  sleepManagerMaybeEnter(sleepState, app, nowMs);
+  sleepManagerMaybeEnter(sleepState, app, rtcService, nowMs);
 }

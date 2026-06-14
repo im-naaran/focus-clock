@@ -41,8 +41,17 @@ static bool detectWakeButton(ButtonId &button) {
   return false;
 }
 
-static void setupWakeupSources() {
-  esp_sleep_enable_timer_wakeup(IDLE_LIGHT_SLEEP_US);
+static uint64_t sleepTimerWakeupUs(const RtcServiceState &rtcService, uint32_t nowMs) {
+  const uint32_t nextReadDueMs = rtcServiceNextReadDueMs(rtcService);
+  uint32_t sleepMs = static_cast<uint32_t>(nextReadDueMs - nowMs);
+  if (timeReached(nowMs, nextReadDueMs) || sleepMs < LIGHT_SLEEP_MIN_TIMER_MS) {
+    sleepMs = LIGHT_SLEEP_MIN_TIMER_MS;
+  }
+  return static_cast<uint64_t>(sleepMs) * 1000ULL;
+}
+
+static void setupWakeupSources(const RtcServiceState &rtcService, uint32_t nowMs) {
+  esp_sleep_enable_timer_wakeup(sleepTimerWakeupUs(rtcService, nowMs));
   for (uint8_t pin : BUTTON_INPUT_PINS) {
     gpio_wakeup_enable(static_cast<gpio_num_t>(pin), GPIO_INTR_LOW_LEVEL);
   }
@@ -69,14 +78,17 @@ static bool canEnterClockLightSleep(const SleepManagerState &sleepState,
 void sleepManagerBegin() {
 }
 
-void sleepManagerMaybeEnter(SleepManagerState &sleepState, const AppState &app, uint32_t nowMs) {
+void sleepManagerMaybeEnter(SleepManagerState &sleepState,
+                            const AppState &app,
+                            const RtcServiceState &rtcService,
+                            uint32_t nowMs) {
   if (!canEnterClockLightSleep(sleepState, app, nowMs)) {
     delay(5);
     return;
   }
 
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-  setupWakeupSources();
+  setupWakeupSources(rtcService, nowMs);
   const uint8_t knobSleepState = inputKnobRotationState();
   esp_light_sleep_start();
 

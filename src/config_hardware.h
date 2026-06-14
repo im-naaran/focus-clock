@@ -32,5 +32,6 @@ static constexpr uint8_t PIN_CANCEL = 6;
 // Power and sleep feature switches.
 static constexpr uint32_t CPU_FREQUENCY_MHZ = 80;
 static constexpr bool ENABLE_CLOCK_LIGHT_SLEEP = true;
+static constexpr bool ENABLE_SERIAL_LOGGING = false;
 
 }  // namespace AppConfig

@@ -19,7 +19,9 @@ bool persistenceBegin() {
   }
   preferencesOpen = preferences.begin(PREFERENCES_NAMESPACE, false);
   if (!preferencesOpen) {
-    Serial.println("Preferences begin failed");
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Preferences begin failed");
+    }
   }
   return preferencesOpen;
 }
@@ -31,7 +33,9 @@ uint8_t persistenceLoadBrightness() {
 
   const uint8_t stored = preferences.getUChar(KEY_BRIGHTNESS, DEFAULT_BRIGHTNESS_LEVEL);
   if (!isValidBrightnessLevel(stored)) {
-    Serial.printf("Invalid brightness level in preferences: %u\n", stored);
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Invalid brightness level in preferences: %u\n", stored);
+    }
     lastSavedBrightness = DEFAULT_BRIGHTNESS_LEVEL;
     return DEFAULT_BRIGHTNESS_LEVEL;
   }
@@ -41,7 +45,9 @@ uint8_t persistenceLoadBrightness() {
 
 bool persistenceSaveBrightness(uint8_t level) {
   if (!isValidBrightnessLevel(level)) {
-    Serial.printf("Skip invalid brightness save: %u\n", level);
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Skip invalid brightness save: %u\n", level);
+    }
     return false;
   }
   if (level == lastSavedBrightness) {
@@ -52,7 +58,9 @@ bool persistenceSaveBrightness(uint8_t level) {
   }
   const size_t written = preferences.putUChar(KEY_BRIGHTNESS, level);
   if (written == 0) {
-    Serial.printf("Brightness save failed: %u\n", level);
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Brightness save failed: %u\n", level);
+    }
     return false;
   }
   lastSavedBrightness = level;

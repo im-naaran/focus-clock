@@ -60,6 +60,10 @@ static bool buildTimeToRtcTime(RtcTime &time) {
 }
 
 static void logRtcRawRegisters(const char *label) {
+  if (!ENABLE_SERIAL_LOGGING) {
+    (void)label;
+    return;
+  }
   const RtcRawRegisters raw = rtcReadRawRegisters();
   Serial.printf("%s RTC raw: sec=0x%02X min=0x%02X hour=0x%02X date=0x%02X "
                 "month=0x%02X day=0x%02X year=0x%02X ctrl=0x%02X\n",
@@ -111,6 +115,7 @@ static bool readRtcNow(RtcServiceState &service, AppState &app, uint32_t nowMs) 
   if (!app.rtcOk) {
     logRtcRawRegisters("RTC read failed");
     scheduleRtcAutoInitIfNeeded(service, app, nowMs);
+    app.displayDirty = true;
   } else if (service.autoInitState != RtcAutoInitState::Failed) {
     service.autoInitState = RtcAutoInitState::Idle;
   }
@@ -150,23 +155,29 @@ static bool updateAutoInit(RtcServiceState &service, AppState &app, uint32_t now
 
   RtcTime buildTime;
   if (!buildTimeToRtcTime(buildTime)) {
-    Serial.println("RTC auto init skipped: build time parse failed");
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("RTC auto init skipped: build time parse failed");
+    }
     service.autoInitState = RtcAutoInitState::Failed;
     app.displayDirty = true;
     return true;
   }
 
-  Serial.printf("RTC invalid, initializing from build time: %04u-%02u-%02u %02u:%02u:%02u day=%u\n",
-                buildTime.year,
-                buildTime.month,
-                buildTime.date,
-                buildTime.hour,
-                buildTime.minute,
-                buildTime.second,
-                buildTime.day);
+  if (ENABLE_SERIAL_LOGGING) {
+    Serial.printf("RTC invalid, initializing from build time: %04u-%02u-%02u %02u:%02u:%02u day=%u\n",
+                  buildTime.year,
+                  buildTime.month,
+                  buildTime.date,
+                  buildTime.hour,
+                  buildTime.minute,
+                  buildTime.second,
+                  buildTime.day);
+  }
 
   if (!rtcSetTime(buildTime)) {
-    Serial.println("RTC auto init failed");
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("RTC auto init failed");
+    }
     service.autoInitState = RtcAutoInitState::Failed;
     app.displayDirty = true;
     return true;
@@ -175,8 +186,14 @@ static bool updateAutoInit(RtcServiceState &service, AppState &app, uint32_t now
   app.rtcOk = rtcReadTime(app.rtcTime);
   service.lastReadMs = nowMs;
   logRtcRawRegisters("After auto init");
-  Serial.printf("RTC auto init %s\n", app.rtcOk ? "OK" : "FAILED");
+  if (ENABLE_SERIAL_LOGGING) {
+    Serial.printf("RTC auto init %s\n", app.rtcOk ? "OK" : "FAILED");
+  }
   service.autoInitState = app.rtcOk ? RtcAutoInitState::Idle : RtcAutoInitState::Failed;
+  if (app.rtcOk) {
+    app.mode = AppMode::Clock;
+    app.setting.state = SettingState::SettingMenu;
+  }
   scheduleNextRead(service, app, nowMs);
   app.displayDirty = true;
   return true;
@@ -205,6 +222,10 @@ bool rtcServiceForceRead(RtcServiceState &service, AppState &app, uint32_t nowMs
   return readRtcNow(service, app, nowMs);
 }
 
+uint32_t rtcServiceNextReadDueMs(const RtcServiceState &service) {
+  return service.nextReadDueMs;
+}
+
 const char *rtcServiceStatusText(const RtcServiceState &service, const AppState &app) {
   if (app.rtcOk && app.rtcTime.valid) {
     return nullptr;
@@ -214,8 +235,9 @@ const char *rtcServiceStatusText(const RtcServiceState &service, const AppState 
       return "RTC INIT...";
     case RtcAutoInitState::Failed:
       return "RTC INIT FAIL";
-    case RtcAutoInitState::Idle:
     case RtcAutoInitState::Waiting:
+      return "RTC INVALID";
+    case RtcAutoInitState::Idle:
       return "RTC READ FAIL";
   }
   return "RTC READ FAIL";
