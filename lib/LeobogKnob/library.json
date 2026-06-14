@@ -1,0 +1,8 @@
+{
+  "name": "LeobogKnob",
+  "version": "0.1.0",
+  "description": "Decoder for the Leobog-style normally-closed V/W detent knob.",
+  "keywords": ["encoder", "knob", "leobog"],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

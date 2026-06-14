@@ -1,122 +1,173 @@
-# ESP32-C3 Focus Timer
+# ESP32-C3 Focus Clock
 
-一个基于 ESP32-C3-Zero 的桌面学习计时器 / 时钟。项目使用 SSD1306 OLED 显示、DS1302 RTC 保持时间，并通过 EC11 旋转编码器和独立按钮完成计时设置与模式切换。
+一个基于微雪 Waveshare ESP32-C3-Zero 的桌面时钟 / 专注计时器。当前固件使用 SSD1306 OLED 显示、DS1302 RTC 保持时间、键盘旋钮和独立按钮完成时钟查看、倒计时和正计时操作。
 
-## 项目目标
+## 当前功能
 
-这个设备面向低频但稳定的学习计时场景：
-
-- 默认显示 CLOCK 页面，可通过 Mode 切换到 TIMER 页面。
-- 支持时钟、倒计时和正计时。
-- 计时运行时优先保证显示与计时稳定。
-- TIMER 空闲页进入 Light Sleep，降低待机功耗。
-- OLED 常亮，避免使用时需要额外唤醒屏幕。
+- 默认进入 `CLOCK` 页面，显示当前时间和日期。
+- `TIMER` 页面支持倒计时和正计时。
+- 旋钮每步调整 1 分钟倒计时时长。
+- 板载 WS2812 用作输入反馈灯。
+- RTC 无效时会尝试用固件编译时间自动初始化。
+- `CLOCK` 页面空闲时进入 Light Sleep，降低待机功耗。
 
 ## 硬件组成
 
-- ESP32-C3-Zero
-- SSD1306 128x64 OLED
-- DS1302 RTC
-- EC11 旋转编码器
-- Mode / Confirm / Cancel 按钮
+- 微雪 Waveshare ESP32-C3-Zero
+- SSD1306 128x64 I2C OLED
+- DS1302 RTC 模块
+- Leobog 风格键盘旋钮：`V/W` 旋转相位，`X/Z` 按压开关
+- 独立 `Mode` / `Cancel` 按钮
 
-引脚定义集中在 `src/config.h`：
+引脚定义集中在 [src/config.h](/Users/naaran/Github/focus-clock/src/config.h:7)。
 
-- OLED I2C：`GPIO0` SDA，`GPIO1` SCL
-- DS1302：`GPIO3` CE，`GPIO4` SCLK，`GPIO5` I/O
-- EC11：`GPIO6` A，`GPIO7` B，`GPIO8` Confirm
-- 独立按钮：`GPIO20` Mode，`GPIO21` Cancel
+## 当前 GPIO 接线
 
-所有按钮统一使用内部上拉，按下接 GND。
+```text
+左侧                              右侧
++--------------------------------+        +--------------------------------+
+| 5V                             |        | GPIO21 -> Mode 按钮 / UART0 TX |
+| GND                            |        | GPIO20 -> 旋钮 V / UART0 RX    |
+| 3V3-OUT                        |        | GPIO19 -> USB D+，避免占用     |
+| GPIO0    -> 未用               |        | GPIO18 -> USB D-，避免占用     |
+| GPIO1    -> OLED SDA           |        | GPIO10 -> 板载 WS2812，避免占用 |
+| GPIO2    -> OLED SCL / strap   |        | GPIO9  -> 未用 / BOOT / strap  |
+| GPIO3    -> DS1302 CLK         |        | GPIO8  -> 旋钮 X / strap       |
+| GPIO4    -> DS1302 DAT         |        | GPIO7  -> 旋钮 W / 旋钮1       |
+| GPIO5    -> DS1302 RST         |        | GPIO6  -> Cancel 按钮          |
++--------------------------------+        +--------------------------------+
+```
 
-## UI 设计
+旋钮接地：
 
-OLED 按 8 个 page 绘制。顶部是状态栏，中间是主显示区，第 5 行用于状态提示。
+```text
+旋钮 Y / 旋转 GND ----+
+                      +---- ESP32 GND
+旋钮 Z / 按钮 GND ----+
+```
 
-顶部状态栏：
+当前实际定义：
 
-- 左侧显示当前页面或计时子状态：`CLOCK`、`TIMER`、`COUNTDOWN`、`STOPWATCH`
-- 非 `CLOCK` 页面右侧显示当前时间，格式为 `HH:MM`
-- `CLOCK` 页面中间已经显示大号时间，顶部不重复显示右侧时间
+| 模块 | GPIO |
+| --- | --- |
+| OLED SDA | `GPIO1` |
+| OLED SCL | `GPIO2` |
+| DS1302 CLK | `GPIO3` |
+| DS1302 DAT / I/O | `GPIO4` |
+| DS1302 RST / CE | `GPIO5` |
+| Cancel 按钮 | `GPIO6` |
+| 旋钮 V / 旋转相位 1 | `GPIO20` |
+| 旋钮 X / Confirm | `GPIO8` |
+| 旋钮 W / 旋转相位 2 | `GPIO7` |
+| 板载 WS2812 | `GPIO10` |
+| Mode 按钮 | `GPIO21` |
+
+按钮和旋钮输入使用 `INPUT_PULLUP`，按下或导通时接 GND。
+
+## GPIO 注意事项
+
+当前先按已有布线维护代码和文档，后续如果重排硬件，优先处理这些引脚风险：
+
+| GPIO | 板上/芯片用途 | 使用建议 |
+| --- | --- | --- |
+| `GPIO2` | ESP32-C3 strapping 引脚 | I2C 上拉通常可接受；外设不能在启动采样时强拉低 |
+| `GPIO8` | ESP32-C3 strapping 引脚 | 当前接旋钮按压；上电或复位时不要按住旋钮 |
+| `GPIO9` | BOOT 按键，ESP32-C3 strapping 引脚 | 当前未用；避免外设在启动采样时强拉 |
+| `GPIO10` | 板载 WS2812/RGB LED | 已用于输入反馈灯，不建议外接其他设备 |
+| `GPIO18` | USB D- | 保留给原生 USB、USB CDC、下载和日志 |
+| `GPIO19` | USB D+ | 保留给原生 USB、USB CDC、下载和日志 |
+| `GPIO20` | 默认 UART0 RX 标注 | 当前接旋钮 V；如果后续需要 UART0，应调整 |
+| `GPIO21` | 默认 UART0 TX 标注 | 当前接 Mode；如果后续需要 UART0，应调整 |
+| `GPIO12`..`GPIO17` | 未引出，且通常用于板载 Flash | 不作为可用 GPIO 考虑 |
+
+`GPIO8/GPIO9/GPIO2` 是启动采样相关引脚。旋钮相位脚会随机械位置变化，上电瞬间状态不可控，因此后续重排时不建议把旋钮 `V/W` 放在这些引脚上。
+
+## 页面与交互
 
 `CLOCK` 页面：
 
-- 中间大字显示当前时间，格式为 `HH:MM`
-- 不显示秒
-- 日期显示在下方
+- 中间大字显示 `HH:MM`。
+- 下方显示日期和星期。
+- RTC 读取失败时显示 `RTC READ FAIL`、`RTC INIT...` 或 `RTC INIT FAIL`。
 
 `TIMER` 页面：
 
-- 空闲状态显示可设置计时值，默认 `00:00:00`
-- 旋转 EC11 直接调整倒计时时长
-- Confirm 启动计时
-- Cancel 重置计时器
+- 空闲状态显示可设置的计时时长，默认 `00:00:00`。
+- 旋钮只在 `TIMER` 空闲或调整状态下修改时长。
+- 设置值为 `00:00:00` 时按 Confirm 启动正计时。
+- 设置值大于 0 时按 Confirm 启动倒计时。
 
-计时状态：
+按键行为：
 
-- 正计时：顶部 `STOPWATCH`，状态行显示 `RUNNING` 或 `PAUSED`
-- 倒计时：顶部 `COUNTDOWN`，状态行显示 `REMAINING`、`PAUSED` 或 `TIME'S UP`
-- 倒计时完成后标题保持 `COUNTDOWN`，避免页面语义跳变
+| 输入 | 行为 |
+| --- | --- |
+| Mode | 在 `CLOCK` 和 `TIMER` 之间切换；如果倒计时已完成，会先重置计时器 |
+| Confirm / 旋钮按压 | 在 `TIMER` 页面启动、暂停、恢复或重置计时 |
+| Cancel | 在 `TIMER` 页面重置计时器 |
+| 旋钮旋转 | 在 `TIMER` 空闲或调整状态下，以 1 分钟为步进调整倒计时 |
 
-## 交互逻辑
+WS2812 输入反馈：
 
-- Mode：在 `CLOCK` 和 `TIMER` 页面之间切换
-- Confirm：
-  - TIMER 空闲或已调整时长：启动计时
-  - 正计时 / 倒计时运行中：暂停
-  - 暂停状态：恢复
-  - 完成状态：重置
-- Cancel：在 TIMER 页面重置计时器
-- EC11：仅在 TIMER 空闲或已调整时长时调整倒计时时长
+| 输入 | 颜色 |
+| --- | --- |
+| Mode | 蓝色 |
+| Confirm | 绿色 |
+| Cancel | 红色 |
+| 旋钮旋转 | 黄绿色 |
 
-如果设置值为 `00:00:00` 后按 Confirm，会启动正计时；如果设置值大于 0，会启动倒计时。
+## RTC 行为
+
+DS1302 使用三线接口读取和写入时间。固件启动后会读取 RTC：
+
+- 读取有效时正常显示 RTC 时间。
+- 读取无效时，串口打印 RTC 原始寄存器，并在短暂延迟后尝试用 `__DATE__` / `__TIME__` 编译时间写入 RTC。
+- 编译时间不是精确校时时间，首次自动初始化可能会有上传和启动造成的固定偏差。
+
+当前没有用户设置时间页面；精确校时后续应通过设置页面或串口命令补齐。
 
 ## 低功耗策略
 
-项目采用保守的低功耗方案：
+当前低功耗策略偏保守：
 
-- CPU 启动后降频到 `80MHz`
-- 启动时关闭 Wi-Fi 和蓝牙控制器
-- 仅在 `TIMER + Idle` 页面进入 Light Sleep
-- 倒计时、正计时、暂停、调整时长和 CLOCK 页面不进入 Light Sleep
-
-这样可以避免计时运行时出现跳秒、显示残缺或按键响应不稳定，同时仍降低 TIMER 空闲页的功耗。
+- 启动后 CPU 降到 `80MHz`。
+- 启动时关闭 Wi-Fi 和蓝牙控制器。
+- 仅在 `CLOCK` 页面、显示已刷新、没有按键按下、输入反馈灯熄灭时进入 Light Sleep。
+- `TIMER` 页面和计时运行期间不进入 Light Sleep。
 
 Light Sleep 唤醒源：
 
-- 1 秒定时唤醒，用于检查 RTC 分钟变化
-- EC11 A/B、Confirm、Mode、Cancel 的 GPIO 低电平唤醒
+- 1 秒定时唤醒，用于检查 RTC 分钟变化。
+- Mode、Confirm、Cancel 的 GPIO 低电平唤醒。
+- 旋钮 V/W 根据当前电平配置相反边沿唤醒。
 
-Mode / Confirm / Cancel 在 Light Sleep 唤醒后有专门的一次性消费逻辑，避免短按被普通 40ms 消抖采样漏掉。
+按键唤醒后有一次性消费逻辑，避免短按被普通消抖采样漏掉。
+
+## 构建与串口
+
+项目使用 PlatformIO，环境名为 `esp32-c3-zero`：
+
+```ini
+[env:esp32-c3-zero]
+platform = espressif32
+board = esp32-c3-devkitm-1
+framework = arduino
+```
+
+当前启用 USB CDC：
+
+```ini
+-DARDUINO_USB_CDC_ON_BOOT=1
+-DARDUINO_USB_MODE=1
+```
+
+串口监视器波特率为 `115200`，上传速度为 `921600`。
 
 ## 代码结构
 
-- `src/main.cpp`
-  - 应用状态机
-  - UI 渲染布局
-  - 按钮和编码器交互
-  - 计时逻辑
-  - 低功耗进入和唤醒处理
+- [src/main.cpp](/Users/naaran/Github/focus-clock/src/main.cpp:1)：应用状态机、页面渲染、按钮和旋钮交互、计时逻辑、Light Sleep。
+- [src/config.h](/Users/naaran/Github/focus-clock/src/config.h:1)：GPIO、刷新周期、低功耗参数、计时器步进参数。
+- [src/display.cpp](/Users/naaran/Github/focus-clock/src/display.cpp:1) / [src/display.h](/Users/naaran/Github/focus-clock/src/display.h:1)：SSD1306 初始化、5x7 字库、行缓存和文本绘制。
+- [src/rtc.cpp](/Users/naaran/Github/focus-clock/src/rtc.cpp:1) / [src/rtc.h](/Users/naaran/Github/focus-clock/src/rtc.h:1)：DS1302 读写、BCD 转换、时间有效性校验。
+- [lib/LeobogKnob](/Users/naaran/Github/focus-clock/lib/LeobogKnob/README.md:1)：当前键盘旋钮的 V/W 解码组件。
 
-- `src/config.h`
-  - 硬件引脚
-  - OLED / RTC / 交互刷新参数
-  - 低功耗参数
-  - 计时器步进和编码器参数
-
-- `src/display.cpp` / `src/display.h`
-  - SSD1306 初始化
-  - 5x7 字库绘制
-  - 行缓存
-  - 普通文本、居中文本和 2 倍放大文本绘制
-
-- `src/rtc.cpp` / `src/rtc.h`
-  - DS1302 初始化
-  - RTC 寄存器读取
-  - BCD 转换与时间有效性校验
-
-## 设计取舍
-
-当前方案没有追求运行时极限省电，而是把省电限制在默认空闲页。原因是计时器的核心体验是准确、稳定、响应直接；运行计时时持续唤醒更简单也更可靠。由于实际计时使用时间通常远少于待机时间，这个取舍能在续航和稳定性之间取得更好的平衡。
-
-OLED 保持常亮，不使用息屏策略。这样设备始终可读，符合桌面计时器的使用方式。
+`SETTING_FEATURE_PLAN.md` 是后续设置页面规划，不代表当前固件已实现功能。

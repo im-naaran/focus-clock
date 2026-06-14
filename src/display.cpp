@@ -8,12 +8,7 @@
 
 using namespace AppConfig;
 
-static constexpr uint8_t OLED_PAGE_COUNT = 8;
-static constexpr uint8_t OLED_WIDTH_PX = 128;
-static constexpr uint8_t GLYPH_WIDTH_PX = 5;
-static constexpr uint8_t GLYPH_ADVANCE_PX = 6;
 static constexpr uint8_t GLYPH_HALF_BITS = 4;
-static constexpr size_t LINE_CACHE_LEN = 22;
 
 enum class LineStyle : uint8_t {
   Invalid,
@@ -21,13 +16,13 @@ enum class LineStyle : uint8_t {
   Center,
   ScaledTop,
   ScaledContinuation,
+  Dialog,
 };
 
 static char oledLineCache[OLED_PAGE_COUNT][LINE_CACHE_LEN] = {};
 static LineStyle oledLineStyle[OLED_PAGE_COUNT] = {};
 static uint8_t oledLineScale[OLED_PAGE_COUNT] = {};
 
-// 最小 ASCII 5x7 字库，覆盖空格到大写 Z；打印路径会先把小写转成大写。
 static const uint8_t font5x7[][5] = {
     {0x00, 0x00, 0x00, 0x00, 0x00}, // space
     {0x00, 0x00, 0x5F, 0x00, 0x00}, // !
@@ -105,12 +100,18 @@ static void oledData(uint8_t data) {
 }
 
 static void oledSetCursor(uint8_t col, uint8_t page) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
   oledCommand(0xB0 + page);
   oledCommand(0x00 + (col & 0x0F));
   oledCommand(0x10 + (col >> 4));
 }
 
 static void oledClearLine(uint8_t page) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
   oledSetCursor(0, page);
   for (uint8_t col = 0; col < OLED_WIDTH_PX; ++col) {
     oledData(0x00);
@@ -128,9 +129,8 @@ static const uint8_t *resolveGlyph(char c) {
 }
 
 static void oledPrintGlyphSpan(const char *text, uint8_t scale, uint8_t bitOffset) {
-  while (*text) {
+  while (*text != '\0') {
     const uint8_t *glyph = resolveGlyph(*text++);
-
     for (uint8_t i = 0; i < GLYPH_WIDTH_PX; ++i) {
       uint8_t expanded = 0;
       for (uint8_t bit = 0; bit < GLYPH_HALF_BITS; ++bit) {
@@ -150,7 +150,7 @@ static void oledPrintGlyphSpan(const char *text, uint8_t scale, uint8_t bitOffse
 
 static void oledPrint(uint8_t col, uint8_t page, const char *text) {
   oledSetCursor(col, page);
-  while (*text) {
+  while (*text != '\0') {
     const uint8_t *glyph = resolveGlyph(*text++);
     for (uint8_t i = 0; i < GLYPH_WIDTH_PX; ++i) {
       oledData(glyph[i]);
@@ -160,7 +160,8 @@ static void oledPrint(uint8_t col, uint8_t page, const char *text) {
 }
 
 static uint8_t textWidth(const char *text, uint8_t scale = 1) {
-  return strlen(text) * GLYPH_ADVANCE_PX * scale;
+  const size_t width = strlen(text) * GLYPH_ADVANCE_PX * scale;
+  return width > 255 ? 255 : static_cast<uint8_t>(width);
 }
 
 static uint8_t centeredTextCol(const char *text, uint8_t scale = 1) {
@@ -173,36 +174,46 @@ static void oledPrintScaled(uint8_t col, uint8_t page, const char *text, uint8_t
     oledPrint(col, page, text);
     return;
   }
-
   oledSetCursor(col, page);
   oledPrintGlyphSpan(text, scale, 0);
-
   oledSetCursor(col, page + 1);
   oledPrintGlyphSpan(text, scale, GLYPH_HALF_BITS);
 }
 
 static bool cacheMatches(uint8_t page, LineStyle style, const char *text, uint8_t scale = 1) {
-  return oledLineStyle[page] == style &&
+  return page < OLED_PAGE_COUNT &&
+         oledLineStyle[page] == style &&
          oledLineScale[page] == scale &&
          strncmp(oledLineCache[page], text, sizeof(oledLineCache[page])) == 0;
 }
 
 static void cacheLine(uint8_t page, LineStyle style, const char *text, uint8_t scale = 1) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
   oledLineStyle[page] = style;
   oledLineScale[page] = scale;
   snprintf(oledLineCache[page], sizeof(oledLineCache[page]), "%s", text);
 }
 
+static void invalidateLine(uint8_t page) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
+  oledLineCache[page][0] = '\0';
+  oledLineStyle[page] = LineStyle::Invalid;
+  oledLineScale[page] = 0;
+}
+
 void displayBegin() {
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
   Wire.setClock(OLED_I2C_CLOCK_HZ);
-
   delay(100);
   const uint8_t init[] = {
       0xAE, 0x20, 0x00, 0xB0, 0xC8, 0x00, 0x10, 0x40,
-      0x81, 0x7F, 0xA1, 0xA6, 0xA8, 0x3F, 0xA4, 0xD3,
-      0x00, 0xD5, 0x80, 0xD9, 0xF1, 0xDA, 0x12, 0xDB,
-      0x40, 0x8D, 0x14, 0xAF,
+      0x81, brightnessLevelToContrast(DEFAULT_BRIGHTNESS_LEVEL), 0xA1, 0xA6,
+      0xA8, 0x3F, 0xA4, 0xD3, 0x00, 0xD5, 0x80, 0xD9,
+      0xF1, 0xDA, 0x12, 0xDB, 0x40, 0x8D, 0x14, 0xAF,
   };
   for (uint8_t cmd : init) {
     oledCommand(cmd);
@@ -217,15 +228,21 @@ void displayClear() {
 
 void displayInvalidateCache() {
   for (uint8_t page = 0; page < OLED_PAGE_COUNT; ++page) {
-    oledLineCache[page][0] = '\0';
-    oledLineStyle[page] = LineStyle::Invalid;
-    oledLineScale[page] = 0;
+    invalidateLine(page);
   }
 }
 
+void displaySetContrast(uint8_t contrast) {
+  oledCommand(0x81);
+  oledCommand(contrast);
+}
+
 void displayPrintLine(uint8_t page, const char *text) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
   char clipped[LINE_CACHE_LEN] = {};
-  snprintf(clipped, sizeof(clipped), "%s", text);
+  snprintf(clipped, sizeof(clipped), "%s", text != nullptr ? text : "");
   if (cacheMatches(page, LineStyle::Left, clipped)) {
     return;
   }
@@ -235,34 +252,54 @@ void displayPrintLine(uint8_t page, const char *text) {
 }
 
 void displayPrintLineCentered(uint8_t page, const char *text) {
+  if (page >= OLED_PAGE_COUNT) {
+    return;
+  }
   char clipped[LINE_CACHE_LEN] = {};
-  snprintf(clipped, sizeof(clipped), "%s", text);
+  snprintf(clipped, sizeof(clipped), "%s", text != nullptr ? text : "");
   if (cacheMatches(page, LineStyle::Center, clipped)) {
     return;
   }
-
   oledClearLine(page);
   oledPrint(centeredTextCol(clipped), page, clipped);
   cacheLine(page, LineStyle::Center, clipped);
 }
 
 void displayPrintScaledLineCentered(uint8_t page, const char *text, uint8_t scale) {
-  // 放大文本占用 page 和 page+1，把两页作为一个逻辑行缓存。
   if (page + 1 >= OLED_PAGE_COUNT) {
     return;
   }
-
   char clipped[LINE_CACHE_LEN] = {};
-  snprintf(clipped, sizeof(clipped), "%s", text);
-  if (cacheMatches(page, LineStyle::ScaledTop, clipped) &&
+  snprintf(clipped, sizeof(clipped), "%s", text != nullptr ? text : "");
+  if (cacheMatches(page, LineStyle::ScaledTop, clipped, scale) &&
       oledLineStyle[page + 1] == LineStyle::ScaledContinuation &&
       oledLineScale[page + 1] == scale) {
     return;
   }
-
   oledClearLine(page);
   oledClearLine(page + 1);
   oledPrintScaled(centeredTextCol(clipped, scale), page, clipped, scale);
   cacheLine(page, LineStyle::ScaledTop, clipped, scale);
   cacheLine(page + 1, LineStyle::ScaledContinuation, "", scale);
+}
+
+void displayDrawDialog(const char *message) {
+  static constexpr uint8_t TOP_PAGE = 2;
+  static constexpr uint8_t BOTTOM_PAGE = 5;
+  const char *top = "+-------------------+";
+  const char *bottom = "+-------------------+";
+  char clipped[LINE_CACHE_LEN] = {};
+  snprintf(clipped, sizeof(clipped), "%s", message != nullptr ? message : "");
+
+  for (uint8_t page = TOP_PAGE; page <= BOTTOM_PAGE; ++page) {
+    oledClearLine(page);
+    invalidateLine(page);
+  }
+  oledPrint(centeredTextCol(top), TOP_PAGE, top);
+  oledPrint(centeredTextCol(clipped), TOP_PAGE + 1, clipped);
+  oledPrint(centeredTextCol(bottom), BOTTOM_PAGE, bottom);
+  cacheLine(TOP_PAGE, LineStyle::Dialog, top);
+  cacheLine(TOP_PAGE + 1, LineStyle::Dialog, clipped);
+  cacheLine(TOP_PAGE + 2, LineStyle::Dialog, "");
+  cacheLine(BOTTOM_PAGE, LineStyle::Dialog, bottom);
 }
