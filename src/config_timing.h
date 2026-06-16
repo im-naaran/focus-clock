@@ -27,6 +27,7 @@ static constexpr uint64_t IDLE_LIGHT_SLEEP_US = 1000000ULL;
 static constexpr uint32_t LIGHT_SLEEP_MIN_TIMER_MS = 50;
 static constexpr uint32_t WAKE_INPUT_HOLD_MS = 80;
 static constexpr uint32_t WAKE_BUTTON_REPEAT_GUARD_MS = 180;
+static constexpr uint32_t SCREEN_WAKE_GRACE_MS = 60 * 1000;
 
 // Timer model.
 static constexpr uint32_t TIMER_SECOND_MS = 1000;

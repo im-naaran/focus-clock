@@ -17,11 +17,17 @@ enum class SettingState : uint8_t {
   BrightnessEdit,
   TimeEditHour,
   TimeEditMinute,
+  NightOffEnabledEdit,
+  NightOffStartHourEdit,
+  NightOffStartMinuteEdit,
+  NightOffEndHourEdit,
+  NightOffEndMinuteEdit,
 };
 
 enum class SettingMenuItem : uint8_t {
   Brightness,
   TimeSet,
+  NightScreenOff,
 };
 
 enum class RtcAutoInitState : uint8_t {
@@ -45,6 +51,18 @@ enum class ButtonEventType : uint8_t {
 
 struct UiConfig {
   uint8_t brightnessLevel = AppConfig::DEFAULT_BRIGHTNESS_LEVEL;
+  bool nightScreenOffEnabled = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_ENABLED;
+  uint16_t nightScreenOffMinute = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_MINUTE;
+  uint16_t nightScreenOnMinute = AppConfig::DEFAULT_NIGHT_SCREEN_ON_MINUTE;
+};
+
+struct DisplayPowerState {
+  bool screenOn = true;
+  uint32_t lastUserInputMs = 0;
+  uint32_t manualWakeUntilMs = 0;
+  uint32_t lastScreenPowerChangeMs = 0;
+  bool suppressButtonUntilRelease = false;
+  ButtonId suppressedButton = ButtonId::Mode;
 };
 
 struct SettingModel {
@@ -52,6 +70,11 @@ struct SettingModel {
   SettingMenuItem selectedItem = SettingMenuItem::Brightness;
   uint8_t editHour = 0;
   uint8_t editMinute = 0;
+  bool editNightOffEnabled = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_ENABLED;
+  uint8_t editNightOffHour = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_MINUTE / 60;
+  uint8_t editNightOffMinute = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_MINUTE % 60;
+  uint8_t editNightOnHour = AppConfig::DEFAULT_NIGHT_SCREEN_ON_MINUTE / 60;
+  uint8_t editNightOnMinute = AppConfig::DEFAULT_NIGHT_SCREEN_ON_MINUTE % 60;
   bool showBlinkField = true;
   uint32_t lastBlinkToggleMs = 0;
   bool timeSetErrorVisible = false;
@@ -65,5 +88,6 @@ struct AppState {
   UiConfig config;
   RtcTime rtcTime;
   bool rtcOk = false;
+  DisplayPowerState displayPower;
   bool displayDirty = true;
 };

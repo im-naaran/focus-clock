@@ -237,6 +237,15 @@ void displaySetContrast(uint8_t contrast) {
   oledCommand(contrast);
 }
 
+void displaySleep() {
+  oledCommand(0xAE);
+}
+
+void displayWake() {
+  oledCommand(0xAF);
+  displayInvalidateCache();
+}
+
 void displayPrintLine(uint8_t page, const char *text) {
   if (page >= OLED_PAGE_COUNT) {
     return;

@@ -75,6 +75,36 @@ static void enterTimeEdit(AppState &app, uint32_t nowMs) {
   invalidatePageLayout(app);
 }
 
+static void enterNightOffEdit(AppState &app, uint32_t nowMs) {
+  app.setting.state = SettingState::NightOffEnabledEdit;
+  app.setting.editNightOffEnabled = app.config.nightScreenOffEnabled;
+  app.setting.editNightOffHour = app.config.nightScreenOffMinute / 60;
+  app.setting.editNightOffMinute = app.config.nightScreenOffMinute % 60;
+  app.setting.editNightOnHour = app.config.nightScreenOnMinute / 60;
+  app.setting.editNightOnMinute = app.config.nightScreenOnMinute % 60;
+  app.setting.showBlinkField = true;
+  app.setting.lastBlinkToggleMs = nowMs;
+  invalidatePageLayout(app);
+}
+
+static uint16_t minuteOfDay(uint8_t hour, uint8_t minute) {
+  return static_cast<uint16_t>(hour) * 60 + minute;
+}
+
+static void saveNightOffConfig(AppState &app) {
+  app.config.nightScreenOffEnabled = app.setting.editNightOffEnabled;
+  app.config.nightScreenOffMinute = minuteOfDay(app.setting.editNightOffHour,
+                                                app.setting.editNightOffMinute);
+  app.config.nightScreenOnMinute = minuteOfDay(app.setting.editNightOnHour,
+                                               app.setting.editNightOnMinute);
+
+  NightScreenOffConfig config;
+  config.enabled = app.config.nightScreenOffEnabled;
+  config.offMinute = app.config.nightScreenOffMinute;
+  config.onMinute = app.config.nightScreenOnMinute;
+  persistenceSaveNightScreenOff(config);
+}
+
 static void setTimeEditError(AppState &app, const char *message) {
   app.setting.timeSetErrorVisible = true;
   snprintf(app.setting.timeSetError, sizeof(app.setting.timeSetError), "%s", message);
@@ -87,8 +117,10 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
       if (app.setting.selectedItem == SettingMenuItem::Brightness) {
         app.setting.state = SettingState::BrightnessEdit;
         invalidatePageLayout(app);
-      } else {
+      } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
         enterTimeEdit(app, nowMs);
+      } else {
+        enterNightOffEdit(app, nowMs);
       }
       break;
     case SettingState::BrightnessEdit:
@@ -121,6 +153,35 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
         }
       }
       break;
+    case SettingState::NightOffEnabledEdit:
+      app.setting.state = SettingState::NightOffStartHourEdit;
+      app.setting.showBlinkField = true;
+      app.setting.lastBlinkToggleMs = nowMs;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffStartHourEdit:
+      app.setting.state = SettingState::NightOffStartMinuteEdit;
+      app.setting.showBlinkField = true;
+      app.setting.lastBlinkToggleMs = nowMs;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffStartMinuteEdit:
+      app.setting.state = SettingState::NightOffEndHourEdit;
+      app.setting.showBlinkField = true;
+      app.setting.lastBlinkToggleMs = nowMs;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffEndHourEdit:
+      app.setting.state = SettingState::NightOffEndMinuteEdit;
+      app.setting.showBlinkField = true;
+      app.setting.lastBlinkToggleMs = nowMs;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffEndMinuteEdit:
+      saveNightOffConfig(app);
+      app.setting.state = SettingState::SettingMenu;
+      invalidatePageLayout(app);
+      break;
   }
 }
 
@@ -136,6 +197,11 @@ static void handleSettingCancel(AppState &app) {
       break;
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
+    case SettingState::NightOffEnabledEdit:
+    case SettingState::NightOffStartHourEdit:
+    case SettingState::NightOffStartMinuteEdit:
+    case SettingState::NightOffEndHourEdit:
+    case SettingState::NightOffEndMinuteEdit:
       app.setting.state = SettingState::SettingMenu;
       app.setting.timeSetErrorVisible = false;
       app.setting.timeSetError[0] = '\0';
@@ -151,9 +217,23 @@ static void handleSettingKnob(AppState &app, int8_t steps) {
 
   switch (app.setting.state) {
     case SettingState::SettingMenu:
-      app.setting.selectedItem = app.setting.selectedItem == SettingMenuItem::Brightness
-                                     ? SettingMenuItem::TimeSet
-                                     : SettingMenuItem::Brightness;
+      if (steps > 0) {
+        if (app.setting.selectedItem == SettingMenuItem::Brightness) {
+          app.setting.selectedItem = SettingMenuItem::TimeSet;
+        } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
+          app.setting.selectedItem = SettingMenuItem::NightScreenOff;
+        } else {
+          app.setting.selectedItem = SettingMenuItem::Brightness;
+        }
+      } else {
+        if (app.setting.selectedItem == SettingMenuItem::Brightness) {
+          app.setting.selectedItem = SettingMenuItem::NightScreenOff;
+        } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
+          app.setting.selectedItem = SettingMenuItem::Brightness;
+        } else {
+          app.setting.selectedItem = SettingMenuItem::TimeSet;
+        }
+      }
       app.displayDirty = true;
       break;
     case SettingState::BrightnessEdit: {
@@ -180,6 +260,30 @@ static void handleSettingKnob(AppState &app, int8_t steps) {
     case SettingState::TimeEditMinute:
       app.setting.editMinute = static_cast<uint8_t>(wrapValue(app.setting.editMinute + steps, 60));
       app.setting.timeSetErrorVisible = false;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffEnabledEdit:
+      app.setting.editNightOffEnabled = !app.setting.editNightOffEnabled;
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffStartHourEdit:
+      app.setting.editNightOffHour =
+          static_cast<uint8_t>(wrapValue(app.setting.editNightOffHour + steps, 24));
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffStartMinuteEdit:
+      app.setting.editNightOffMinute =
+          static_cast<uint8_t>(wrapValue(app.setting.editNightOffMinute + steps, 60));
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffEndHourEdit:
+      app.setting.editNightOnHour =
+          static_cast<uint8_t>(wrapValue(app.setting.editNightOnHour + steps, 24));
+      app.displayDirty = true;
+      break;
+    case SettingState::NightOffEndMinuteEdit:
+      app.setting.editNightOnMinute =
+          static_cast<uint8_t>(wrapValue(app.setting.editNightOnMinute + steps, 60));
       app.displayDirty = true;
       break;
   }
@@ -237,7 +341,11 @@ void appHandleInput(AppState &app, RtcServiceState &rtcService, const InputEvent
 bool appUpdateSettingBlink(AppState &app, uint32_t nowMs) {
   if (app.mode != AppMode::Setting ||
       (app.setting.state != SettingState::TimeEditHour &&
-       app.setting.state != SettingState::TimeEditMinute)) {
+       app.setting.state != SettingState::TimeEditMinute &&
+       app.setting.state != SettingState::NightOffStartHourEdit &&
+       app.setting.state != SettingState::NightOffStartMinuteEdit &&
+       app.setting.state != SettingState::NightOffEndHourEdit &&
+       app.setting.state != SettingState::NightOffEndMinuteEdit)) {
     return false;
   }
   if (static_cast<uint32_t>(nowMs - app.setting.lastBlinkToggleMs) < SETTING_BLINK_MS) {

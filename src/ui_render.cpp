@@ -137,11 +137,10 @@ static void renderTimer(const AppState &app, const char *rtcStatusText) {
 }
 
 static void renderSettingMenu(const AppState &app) {
-  (void)app;
   displayPrintLine(2, "");
   displayPrintLine(3, app.setting.selectedItem == SettingMenuItem::Brightness ? "> BRIGHTNESS" : "  BRIGHTNESS");
   displayPrintLine(4, app.setting.selectedItem == SettingMenuItem::TimeSet ? "> TIME SET" : "  TIME SET");
-  displayPrintLine(5, "");
+  displayPrintLine(5, app.setting.selectedItem == SettingMenuItem::NightScreenOff ? "> NIGHT OFF" : "  NIGHT OFF");
   displayPrintLine(6, "");
   displayPrintLine(7, "");
 }
@@ -180,6 +179,57 @@ static void renderTimeEdit(const AppState &app) {
   }
 }
 
+static void formatNightOffTime(const AppState &app, bool editingStart, char *buffer, size_t bufferSize) {
+  const bool blink = app.setting.showBlinkField;
+  const uint8_t hour = editingStart ? app.setting.editNightOffHour : app.setting.editNightOnHour;
+  const uint8_t minute = editingStart ? app.setting.editNightOffMinute : app.setting.editNightOnMinute;
+  const bool editingHour = app.setting.state == SettingState::NightOffStartHourEdit ||
+                           app.setting.state == SettingState::NightOffEndHourEdit;
+  const bool editingMinute = app.setting.state == SettingState::NightOffStartMinuteEdit ||
+                             app.setting.state == SettingState::NightOffEndMinuteEdit;
+
+  if (editingHour && !blink) {
+    snprintf(buffer, bufferSize, "  :%02u", minute);
+  } else if (editingMinute && !blink) {
+    snprintf(buffer, bufferSize, "%02u:  ", hour);
+  } else {
+    snprintf(buffer, bufferSize, "%02u:%02u", hour, minute);
+  }
+}
+
+static void renderNightOffEdit(const AppState &app) {
+  char line[8];
+  displayPrintLine(2, "");
+
+  switch (app.setting.state) {
+    case SettingState::NightOffEnabledEdit:
+      displayPrintLine(3, "NIGHT OFF");
+      displayPrintLineCentered(4, app.setting.editNightOffEnabled ? "ON" : "OFF");
+      break;
+    case SettingState::NightOffStartHourEdit:
+    case SettingState::NightOffStartMinuteEdit:
+      formatNightOffTime(app, true, line, sizeof(line));
+      displayPrintLine(3, "OFF AT");
+      displayPrintLineCentered(4, line);
+      break;
+    case SettingState::NightOffEndHourEdit:
+    case SettingState::NightOffEndMinuteEdit:
+      formatNightOffTime(app, false, line, sizeof(line));
+      displayPrintLine(3, "ON AT");
+      displayPrintLineCentered(4, line);
+      break;
+    case SettingState::SettingMenu:
+    case SettingState::BrightnessEdit:
+    case SettingState::TimeEditHour:
+    case SettingState::TimeEditMinute:
+      break;
+  }
+
+  displayPrintLine(5, "");
+  displayPrintLine(6, "");
+  displayPrintLine(7, "");
+}
+
 static void renderSetting(const AppState &app) {
   renderHeader("SETTING", app, true);
   displayPrintLine(1, "");
@@ -194,6 +244,13 @@ static void renderSetting(const AppState &app) {
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
       renderTimeEdit(app);
+      break;
+    case SettingState::NightOffEnabledEdit:
+    case SettingState::NightOffStartHourEdit:
+    case SettingState::NightOffStartMinuteEdit:
+    case SettingState::NightOffEndHourEdit:
+    case SettingState::NightOffEndMinuteEdit:
+      renderNightOffEdit(app);
       break;
   }
 }

@@ -6,6 +6,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "display.h"
+#include "display_power.h"
 #include "feedback.h"
 #include "input.h"
 #include "persistence.h"
@@ -62,6 +63,9 @@ static void flashForInputEvent(const InputEvent &event) {
 }
 
 static void dispatchInputEvent(const InputEvent &event, uint32_t nowMs) {
+  if (displayPowerHandleInput(app, event, nowMs)) {
+    return;
+  }
   flashForInputEvent(event);
   if (event.kind == InputEventKind::KnobRaw ||
       event.kind == InputEventKind::KnobRotationStart ||
@@ -106,9 +110,16 @@ void setup() {
   displayPrintLine(0, "BOOTING...");
 
   app.config.brightnessLevel = persistenceLoadBrightness();
+  {
+    const NightScreenOffConfig nightConfig = persistenceLoadNightScreenOff();
+    app.config.nightScreenOffEnabled = nightConfig.enabled;
+    app.config.nightScreenOffMinute = nightConfig.offMinute;
+    app.config.nightScreenOnMinute = nightConfig.onMinute;
+  }
   displaySetContrast(brightnessLevelToContrast(app.config.brightnessLevel));
 
   const uint32_t nowMs = millis();
+  displayPowerBegin(app, nowMs);
   rtcServiceBegin(rtcService, app, nowMs);
   sleepManagerBegin();
   app.displayDirty = true;
@@ -148,5 +159,6 @@ void loop() {
 
   feedbackUpdate(nowMs);
   sleepManagerUpdateButtonRelease(sleepState);
+  displayPowerUpdate(app, sleepState, nowMs);
   sleepManagerMaybeEnter(sleepState, app, rtcService, nowMs);
 }
