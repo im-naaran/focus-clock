@@ -1,0 +1,278 @@
+# 任务拆解：Focus Clock 重构
+
+日期：2026-06-08
+Feature：focus_clock_refactor
+阶段：Phase 3
+
+## 执行约束
+
+- Phase 4 必须按本文件顺序执行任务。
+- 一次只处理一个任务，完成后更新任务状态和验证结果。
+- 生产代码修改应保持模块边界，不把业务逻辑堆回 `main.cpp`。
+- `backup/` 只作为参考，不作为生产源码。
+- 每个任务完成后至少执行可用的编译验证；如当时尚不能编译，应说明原因并在后续集成任务补齐。
+- 不声明硬件验证通过，除非用户实际确认硬件行为。
+
+## 任务列表
+
+- [x] task-01: [项目结构] 建立生产代码目录与本地库结构
+  - 追踪需求：NFR-01、NFR-02
+  - 修改范围：`src/`、`lib/LeobogKnob/`
+  - 内容：
+    - 创建标准 `src/` 目录和设计中列出的模块文件。
+    - 从 `backup/lib/LeobogKnob/` 恢复本地库到 `lib/LeobogKnob/`，仅作为旋钮组件依赖。
+    - 确认 `backup/` 不参与生产 include 路径。
+  - 完成标准：
+    - 文件结构与 `design.md` 的模块结构一致。
+    - 尚未实现的模块可以先保留最小声明，但不引入业务逻辑。
+  - 验证：
+    - 已执行 `rg --files src lib/LeobogKnob`，确认 `src/` 模块骨架和 `lib/LeobogKnob/` 本地库存在。
+  - 人工验证关注点：
+    - 无。
+
+- [x] task-02: [配置] 拆分硬件、时间和显示配置
+  - 追踪需求：R-01、R-03、R-04、R-41、R-42、R-64、R-82 到 R-86、NFR-03、NFR-06
+  - 修改范围：`src/config.h`、`src/config_hardware.h`、`src/config_timing.h`、`src/config_display.h`
+  - 内容：
+    - 将 GPIO、I2C、WS2812 等硬件常量放入 `config_hardware.h`。
+    - 将消抖、Mode 长按、RTC 调度、Light Sleep、计时器步进等常量放入 `config_timing.h`。
+    - 将 OLED 尺寸、行缓存长度、亮度档位和 contrast 映射放入 `config_display.h`。
+    - `config.h` 只做汇总 include。
+  - 完成标准：
+    - 没有魔法数字散落在后续模块接口定义中。
+    - 亮度映射包含 1..5 -> `0x10/0x30/0x7F/0xBF/0xFF`。
+    - RTC 正常最大间隔为 30000ms，短周期为 1000ms。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - GPIO 与实际接线一致。
+
+- [x] task-03: [状态模型] 定义应用、计时器、设置和输入事件模型
+  - 追踪需求：R-06、R-18、R-33、R-62、NFR-04
+  - 修改范围：`src/app_state.h`、`src/timer_model.h`
+  - 内容：
+    - 定义 `AppMode`、`TimerState`、`SettingState`、`SettingMenuItem`、`ButtonId`、`ButtonEventType`。
+    - 定义 `UiConfig`、`TimerModel`、`SettingModel`、`AppState`。
+    - 只放状态结构和轻量 helper，不直接 include 驱动库。
+  - 完成标准：
+    - 枚举只定义一处。
+    - 状态结构不依赖 OLED、RTC 低层、Preferences 或 WS2812 实现。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 无。
+
+- [x] task-04: [显示驱动] 实现 SSD1306 基础绘制、缓存、对比度和提示框
+  - 追踪需求：R-05、R-40、R-72 到 R-78、AC-12、AC-13
+  - 修改范围：`src/display.h`、`src/display.cpp`
+  - 内容：
+    - 恢复并审查 SSD1306 初始化、清屏、行缓存、5x7 ASCII 字库、居中和放大绘制。
+    - 新增 `displaySetContrast(uint8_t contrast)`。
+    - 新增 `displayDrawDialog(const char *message)`，使用简单字符边框或 page 清理效果显示失败内容。
+    - 保证小写转大写、长文本截断和缓存失效行为。
+  - 完成标准：
+    - 页面切换可清屏并失效缓存。
+    - 提示框不会永久污染后续页面缓存。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - OLED 是否正常显示、亮度对比度是否可见变化、提示框是否可读。
+
+- [x] task-05: [RTC 低层] 实现 DS1302 读写、校验和写入确认
+  - 追踪需求：R-63 到 R-71、AC-02、AC-09
+  - 修改范围：`src/rtc.h`、`src/rtc.cpp`
+  - 内容：
+    - 实现 DS1302 GPIO 初始化、寄存器读写、BCD 转换。
+    - 实现 `RtcTime`、`RtcRawRegisters`、`rtcReadTime()`、`rtcReadRawRegisters()`、`rtcSetTime()`。
+    - 校验秒、分、时、日期、月份、星期、年份范围和 CH 位。
+    - 写入后读取确认，允许秒字段最多合理前进。
+  - 完成标准：
+    - RTC 低层不依赖 UI、SETTING、TIMER。
+    - 无效时间返回失败，不污染有效状态。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - RTC 接线、首次读取、写入后时间是否继续走。
+
+- [x] task-06: [持久化] 实现亮度配置读取和实时保存
+  - 追踪需求：R-41 到 R-48、R-79 到 R-81、AC-08
+  - 修改范围：`src/persistence.h`、`src/persistence.cpp`
+  - 内容：
+    - 使用 ESP32 `Preferences` 实现亮度读取和保存。
+    - namespace 使用 `focusClock`，key 使用 `bright`。
+    - 非法值或缺失值回退默认 3 档。
+    - 保存失败记录 Serial，不阻断业务。
+  - 完成标准：
+    - 持久化模块不直接修改 OLED 或应用模式。
+    - 只在亮度实际变化时触发保存。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 调整亮度后重启是否恢复。
+
+- [x] task-07: [输入反馈] 保留输入反馈适配层并默认禁用 WS2812 反馈
+  - 追踪需求：R-58 到 R-61、AC-10
+  - 修改范围：`src/feedback.h`、`src/feedback.cpp`
+  - 内容：
+    - 封装 `Adafruit_NeoPixel`，提供 `feedbackBegin()`、`feedbackFlash()`、`feedbackSetHeld()`、`feedbackUpdate()`、`feedbackActive()`。
+    - 业务层只使用 `FeedbackEvent`，不 include `Adafruit_NeoPixel.h`。
+    - 当前默认禁用 WS2812 输入反馈，LED 保持熄灭；接口作为未来灯效扩展点保留。
+    - 反馈事件收敛为 Mode、Confirm、Cancel、Knob 四类需求语义。
+  - 完成标准：
+    - 后续重新启用或移除 WS2812 时主要修改 `feedback.*`。
+    - 当前禁用状态下 `feedbackActive()` 返回 false，不阻止 Light Sleep。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 当前版本输入时 WS2812 是否保持熄灭；后续重新启用灯效时再验证颜色和持续时间。
+
+- [x] task-08: [计时器] 实现 TIMER 纯状态机
+  - 追踪需求：R-18 到 R-32、AC-04、AC-05
+  - 修改范围：`src/timer_model.h`、`src/timer_model.cpp`
+  - 内容：
+    - 实现 reset、Confirm、Cancel、旋钮调整、elapsed tick、running 判断和显示秒数 helper。
+    - 使用 `millis()` 差值补偿 loop 抖动。
+    - 实现上限 `99:59:59`、倒计时归零 Finished、Finished 重置。
+  - 完成标准：
+    - `timer_model.*` 不依赖显示、输入、RTC、Preferences 或 WS2812。
+    - SETTING 页面不影响计时器 tick。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 正计时、倒计时、暂停/恢复、完成、重置。
+
+- [x] task-09: [RTC 服务] 实现 RTC 自动初始化、状态文本和读取调度
+  - 追踪需求：R-13 到 R-16、R-64 到 R-71、AC-02
+  - 修改范围：`src/rtc_service.h`、`src/rtc_service.cpp`
+  - 内容：
+    - 封装 `RtcServiceState`。
+    - 实现启动立即读取、失败日志、一次性自动初始化。
+    - 实现正常读取策略：“分钟边界优先 + 最长 30 秒兜底”。
+    - 实现异常、自动初始化等待和写入确认阶段 1 秒短周期。
+    - 提供 `rtcServiceStatusText()` 和 `rtcServiceForceRead()`。
+  - 完成标准：
+    - RTC 服务不绘制 OLED，不处理用户输入。
+    - TIME SET 写入成功可强制立即读取。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - RTC 正常显示更新、RTC 异常自动初始化只尝试一次、失败状态正确。
+
+- [x] task-10: [输入] 实现按钮消抖、Mode 长按和旋钮事件归一化
+  - 追踪需求：R-08 到 R-10、R-17、R-20、R-30、R-36、R-43、R-50 到 R-53、R-62、R-63、AC-03、AC-06、AC-07
+  - 修改范围：`src/input.h`、`src/input.cpp`
+  - 内容：
+    - 实现 Mode 短按/长按状态机，长按释放不派发短按。
+    - 实现 Cancel 消抖按下事件。
+    - 接入 `LeobogKnob` 的旋转和 Confirm 按钮事件。
+    - 输出规范化事件，不直接修改应用状态。
+    - 为 Light Sleep 唤醒桥接提供必要 helper。
+  - 完成标准：
+    - `input.*` 不直接切页面、不改计时器、不调用 feedback。
+    - Mode 从睡眠唤醒后可继续进入长按判定。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 短按、长按、长按释放、旋钮方向、Confirm 和 Cancel 消抖。
+
+- [x] task-11: [页面渲染] 实现 CLOCK、TIMER、SETTING 页面渲染
+  - 追踪需求：R-13 到 R-17、R-31 到 R-40、R-49 到 R-57、R-72 到 R-78、AC-02、AC-07、AC-12、AC-13
+  - 修改范围：`src/ui_render.h`、`src/ui_render.cpp`
+  - 内容：
+    - 实现通用 header 和当前时间显示。
+    - 实现 CLOCK 正常和 RTC 异常显示。
+    - 实现 TIMER 标题、计时值、状态行。
+    - 实现 SETTING 菜单、BrightnessEdit、TimeEditHour、TimeEditMinute。
+    - 实现 TIME SET 当前字段闪烁显示和失败提示框覆盖。
+  - 完成标准：
+    - 渲染层不改业务状态，不读 GPIO，不写 Preferences，不写 RTC。
+    - 页面切换不残留旧文本。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 各页面布局是否符合 128x64 OLED 可读性。
+
+- [x] task-12: [SETTING 业务] 实现 SETTING 菜单、亮度编辑和 TIME SET 业务分发
+  - 追踪需求：R-09 到 R-12、R-33 到 R-57、R-79 到 R-81、AC-05、AC-07、AC-08、AC-09、AC-12
+  - 修改范围：`src/app_controller.h`、`src/app_controller.cpp`、必要时更新 `src/app_state.h`
+  - 内容：
+    - 实现进入 SETTING 不影响 TimerModel。
+    - 实现菜单选择、Confirm 进入栏目、Cancel 返回或退出。
+    - BrightnessEdit 旋钮调整时实时应用并保存，Cancel 不回滚。
+    - TimeEdit 成功写入后强制读 RTC 并返回一级菜单。
+    - TimeEdit 失败时设置提示框内容并停留当前编辑状态。
+  - 完成标准：
+    - SETTING 业务只协调状态和模块接口，不直接操作硬件底层。
+    - 退出 SETTING 菜单固定返回 TIMER。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 亮度实时保存、TIME SET 成功返回、失败提示框、Cancel 行为。
+
+- [x] task-13: [低功耗] 实现 Light Sleep 管理和唤醒输入桥接
+  - 追踪需求：R-62、R-63、R-82 到 R-86、AC-11
+  - 修改范围：`src/sleep_manager.h`、`src/sleep_manager.cpp`、必要时更新 `src/input.*`
+  - 内容：
+    - 实现 CLOCK 空闲 Light Sleep 条件判断。
+    - 配置 timer、Mode、Confirm、Cancel、旋钮 V/W 唤醒源。
+    - 唤醒后设置保持窗口。
+    - Mode 唤醒后不直接派发短按，交给 input 长按状态机。
+    - Confirm/Cancel 唤醒 pending 需要重复保护。
+  - 完成标准：
+    - SETTING 不进入 Light Sleep。
+    - TIMER 正计时或倒计时后台运行时不进入 Light Sleep。
+    - 低功耗条件集中在 `sleep_manager.*`。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - CLOCK 空闲睡眠、按键/旋钮唤醒、Mode 长按唤醒进入 SETTING。
+
+- [x] task-14: [主循环集成] 集成初始化、事件分发、状态机、渲染和服务调度
+  - 追踪需求：R-01 到 R-86、AC-01 到 AC-13
+  - 修改范围：`src/main.cpp`
+  - 内容：
+    - 按设计实现 `setup()` 初始化顺序。
+    - 按设计实现 `loop()` 调度顺序。
+    - 输入事件统一分发：先反馈，再按 AppMode 调用对应业务。
+    - 页面切换时清屏并失效缓存。
+    - 保持 `main.cpp` 只做编排，不承载驱动细节。
+  - 完成标准：
+    - `main.cpp` 依赖模块接口，不直接操作 OLED 命令、RTC 寄存器、Preferences 或 NeoPixel。
+    - CLOCK/TIMER/SETTING 可通过事件流串联。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+  - 人工验证关注点：
+    - 整体页面流转和输入响应。
+
+- [x] task-15: [构建与静态审查] 完成编译验证和需求追踪检查
+  - 追踪需求：AC-01、NFR-01 到 NFR-07
+  - 修改范围：必要时修正生产代码和规格任务状态
+  - 内容：
+    - 运行 `pio run -e esp32-c3-zero`。
+    - 检查模块依赖是否符合 `design.md` 的禁止依赖。
+    - 检查 `backup/` 未被生产 include。
+    - 检查需求 R-01 到 R-86 是否都有实现路径。
+    - 更新本任务文件中已完成任务状态和验证结果。
+  - 完成标准：
+    - 编译通过，或明确记录无法通过的外部原因。
+    - 无明显模块边界破坏。
+  - 验证：
+    - 已运行 `pio run -e esp32-c3-zero`，构建通过。
+    - 已用 `rg` 检查生产代码 include 和关键依赖，未发现生产代码引用 `backup/`。
+  - 人工验证关注点：
+    - 无。
+
+- [x] task-16: [硬件验收准备] 输出人工验证清单并记录待测风险
+  - 追踪需求：AC-02 到 AC-13
+  - 修改范围：`specs/20260608_focus_clock_refactor/hardware-verification.md`
+  - 内容：
+    - 整理硬件人工验证步骤：CLOCK、TIMER、SETTING、RTC、亮度、WS2812、Light Sleep。
+    - 标注无法自动验证的项目。
+    - 记录旋钮方向、GPIO8 启动按压、RTC 写入和 Light Sleep 唤醒等风险。
+  - 完成标准：
+    - 用户可按清单逐项在硬件上确认。
+    - 不声称硬件验证通过，除非用户确认。
+  - 验证：
+    - 已创建硬件人工验收清单。
+  - 人工验证关注点：
+    - 按清单实际操作硬件。
