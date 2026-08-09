@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "network_types.h"
+
 struct NightScreenOffConfig {
   bool enabled = true;
   uint16_t offMinute = 0;
@@ -13,4 +15,6 @@ uint8_t persistenceLoadBrightness();
 bool persistenceSaveBrightness(uint8_t level);
 NightScreenOffConfig persistenceLoadNightScreenOff();
 bool persistenceSaveNightScreenOff(const NightScreenOffConfig &config);
+NetworkConfig persistenceLoadNetworkConfig();
+bool persistenceSaveNetworkConfig(const NetworkConfig &config);
 void persistenceEnd();

@@ -2,7 +2,10 @@
 
 #include <Preferences.h>
 
+#include <string.h>
+
 #include "config.h"
+#include "persistence_codec.h"
 
 using namespace AppConfig;
 
@@ -11,11 +14,13 @@ static constexpr const char *KEY_BRIGHTNESS = "bright";
 static constexpr const char *KEY_NIGHT_SCREEN_OFF_ENABLED = "nightOffEn";
 static constexpr const char *KEY_NIGHT_SCREEN_OFF_MINUTE = "nightOffMin";
 static constexpr const char *KEY_NIGHT_SCREEN_ON_MINUTE = "nightOnMin";
+static constexpr const char *KEY_NETWORK_CONFIG = "netCfg";
 
 static Preferences preferences;
 static bool preferencesOpen = false;
 static uint8_t lastSavedBrightness = 0;
 static NightScreenOffConfig lastSavedNightScreenOff;
+static NetworkConfig lastSavedNetworkConfig;
 
 static NightScreenOffConfig defaultNightScreenOffConfig() {
   NightScreenOffConfig config;
@@ -145,6 +150,77 @@ bool persistenceSaveNightScreenOff(const NightScreenOffConfig &config) {
   }
 
   lastSavedNightScreenOff = config;
+  return true;
+}
+
+NetworkConfig persistenceLoadNetworkConfig() {
+  NetworkConfig config;
+  if (!persistenceBegin()) {
+    lastSavedNetworkConfig = config;
+    return config;
+  }
+
+  const size_t storedSize = preferences.getBytesLength(KEY_NETWORK_CONFIG);
+  if (storedSize == 0) {
+    lastSavedNetworkConfig = config;
+    return config;
+  }
+  if (storedSize != sizeof(PersistedNetworkConfigV1)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Invalid network config size in preferences: %u\n",
+                    static_cast<unsigned int>(storedSize));
+    }
+    lastSavedNetworkConfig = config;
+    return config;
+  }
+
+  PersistedNetworkConfigV1 blob;
+  const size_t readSize = preferences.getBytes(KEY_NETWORK_CONFIG, &blob,
+                                                sizeof(blob));
+  const NetworkConfigBlobError error =
+      persistenceDecodeNetworkConfig(&blob, readSize, config);
+  if (error != NetworkConfigBlobError::None) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Invalid network config in preferences: error=%u\n",
+                    static_cast<unsigned int>(error));
+    }
+    // Any invalid V1 field discards the whole blob to avoid mixed credentials.
+    config = NetworkConfig();
+  }
+
+  lastSavedNetworkConfig = config;
+  return config;
+}
+
+bool persistenceSaveNetworkConfig(const NetworkConfig &config) {
+  PersistedNetworkConfigV1 blob;
+  if (!persistenceEncodeNetworkConfig(config, blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Skip invalid network config save");
+    }
+    return false;
+  }
+
+  if (config.policy == lastSavedNetworkConfig.policy &&
+      strcmp(config.staSsid, lastSavedNetworkConfig.staSsid) == 0 &&
+      strcmp(config.staPassword, lastSavedNetworkConfig.staPassword) == 0) {
+    return true;
+  }
+  if (!persistenceBegin()) {
+    return false;
+  }
+
+  // A single blob write prevents policy, SSID, and password from mixing versions.
+  const size_t written = preferences.putBytes(KEY_NETWORK_CONFIG, &blob,
+                                               sizeof(blob));
+  if (written != sizeof(blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Network config save failed");
+    }
+    return false;
+  }
+
+  lastSavedNetworkConfig = config;
   return true;
 }
 

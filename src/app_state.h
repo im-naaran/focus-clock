@@ -3,7 +3,9 @@
 #include <Arduino.h>
 
 #include "config.h"
+#include "network_types.h"
 #include "rtc.h"
+#include "setting_logic.h"
 #include "timer_model.h"
 
 enum class AppMode : uint8_t {
@@ -22,12 +24,8 @@ enum class SettingState : uint8_t {
   NightOffStartMinuteEdit,
   NightOffEndHourEdit,
   NightOffEndMinuteEdit,
-};
-
-enum class SettingMenuItem : uint8_t {
-  Brightness,
-  TimeSet,
-  NightScreenOff,
+  WifiConfigPortal,
+  WifiPolicyEdit,
 };
 
 enum class RtcAutoInitState : uint8_t {
@@ -75,6 +73,8 @@ struct SettingModel {
   uint8_t editNightOffMinute = AppConfig::DEFAULT_NIGHT_SCREEN_OFF_MINUTE % 60;
   uint8_t editNightOnHour = AppConfig::DEFAULT_NIGHT_SCREEN_ON_MINUTE / 60;
   uint8_t editNightOnMinute = AppConfig::DEFAULT_NIGHT_SCREEN_ON_MINUTE % 60;
+  WifiPolicy editWifiPolicy = WifiPolicy::Off;
+  bool wifiPolicySaveErrorVisible = false;
   bool showBlinkField = true;
   uint32_t lastBlinkToggleMs = 0;
   bool timeSetErrorVisible = false;
@@ -86,8 +86,12 @@ struct AppState {
   TimerModel timer;
   SettingModel setting;
   UiConfig config;
+  NetworkConfig networkConfig;
   RtcTime rtcTime;
   bool rtcOk = false;
+  // Configuration mode is an explicit runtime request and is never persisted.
+  bool configModeRequested = false;
+  WifiRuntimeView wifiRuntime;
   DisplayPowerState displayPower;
   bool displayDirty = true;
 };

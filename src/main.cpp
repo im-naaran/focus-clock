@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <WiFi.h>
 #include <esp_bt.h>
 
 #include "app_controller.h"
@@ -15,16 +14,18 @@
 #include "sleep_manager.h"
 #include "timer_model.h"
 #include "ui_render.h"
+#include "wifi_portal.h"
+#include "wifi_service.h"
 
 using namespace AppConfig;
 
 static AppState app;
 static RtcServiceState rtcService;
 static SleepManagerState sleepState;
+static WifiServiceState wifiService;
+static WifiPortalState wifiPortal;
 
-static void disableRadios() {
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+static void disableBluetooth() {
   esp_bt_controller_disable();
 }
 
@@ -93,7 +94,7 @@ static void updateHeldButtonFeedback() {
 
 void setup() {
   setCpuFrequencyMhz(CPU_FREQUENCY_MHZ);
-  disableRadios();
+  disableBluetooth();
 
   if (ENABLE_SERIAL_LOGGING) {
     Serial.begin(115200);
@@ -116,9 +117,12 @@ void setup() {
     app.config.nightScreenOffMinute = nightConfig.offMinute;
     app.config.nightScreenOnMinute = nightConfig.onMinute;
   }
+  app.networkConfig = persistenceLoadNetworkConfig();
   displaySetContrast(brightnessLevelToContrast(app.config.brightnessLevel));
 
   const uint32_t nowMs = millis();
+  wifiServiceBegin(wifiService, nowMs);
+  wifiPortalBegin(wifiPortal, app, rtcService, wifiService);
   displayPowerBegin(app, nowMs);
   rtcServiceBegin(rtcService, app, nowMs);
   sleepManagerBegin();
@@ -151,6 +155,14 @@ void loop() {
 
   rtcServiceUpdate(rtcService, app, nowMs);
   appUpdateSettingBlink(app, nowMs);
+
+  // Service reconciles radio state before HTTP observes AP readiness; both
+  // advance before rendering and sleep so Cancel and network work stay live.
+  if (wifiServiceUpdate(wifiService, app.networkConfig,
+                        app.configModeRequested, app.wifiRuntime, nowMs)) {
+    app.displayDirty = true;
+  }
+  wifiPortalUpdate(wifiPortal, app.configModeRequested, app.wifiRuntime);
 
   if (app.displayDirty) {
     renderApp(app, rtcServiceStatusText(rtcService, app));

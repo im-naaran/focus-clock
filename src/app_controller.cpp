@@ -87,6 +87,13 @@ static void enterNightOffEdit(AppState &app, uint32_t nowMs) {
   invalidatePageLayout(app);
 }
 
+static void enterWifiPolicyEdit(AppState &app) {
+  app.setting.state = SettingState::WifiPolicyEdit;
+  app.setting.editWifiPolicy = app.networkConfig.policy;
+  app.setting.wifiPolicySaveErrorVisible = false;
+  invalidatePageLayout(app);
+}
+
 static uint16_t minuteOfDay(uint8_t hour, uint8_t minute) {
   return static_cast<uint16_t>(hour) * 60 + minute;
 }
@@ -114,13 +121,26 @@ static void setTimeEditError(AppState &app, const char *message) {
 static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uint32_t nowMs) {
   switch (app.setting.state) {
     case SettingState::SettingMenu:
-      if (app.setting.selectedItem == SettingMenuItem::Brightness) {
-        app.setting.state = SettingState::BrightnessEdit;
-        invalidatePageLayout(app);
-      } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
-        enterTimeEdit(app, nowMs);
-      } else {
-        enterNightOffEdit(app, nowMs);
+      switch (app.setting.selectedItem) {
+        case SettingMenuItem::Brightness:
+          app.setting.state = SettingState::BrightnessEdit;
+          invalidatePageLayout(app);
+          break;
+        case SettingMenuItem::TimeSet:
+          enterTimeEdit(app, nowMs);
+          break;
+        case SettingMenuItem::NightScreenOff:
+          enterNightOffEdit(app, nowMs);
+          break;
+        case SettingMenuItem::WifiConfig:
+          // The menu Confirm is the local authorization for this runtime-only AP.
+          app.configModeRequested = true;
+          app.setting.state = SettingState::WifiConfigPortal;
+          invalidatePageLayout(app);
+          break;
+        case SettingMenuItem::WifiPolicy:
+          enterWifiPolicyEdit(app);
+          break;
       }
       break;
     case SettingState::BrightnessEdit:
@@ -182,6 +202,22 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
       app.setting.state = SettingState::SettingMenu;
       invalidatePageLayout(app);
       break;
+    case SettingState::WifiConfigPortal:
+      break;
+    case SettingState::WifiPolicyEdit: {
+      NetworkConfig candidate = app.networkConfig;
+      candidate.policy = app.setting.editWifiPolicy;
+      if (persistenceSaveNetworkConfig(candidate)) {
+        app.networkConfig = candidate;
+        app.setting.wifiPolicySaveErrorVisible = false;
+        app.setting.state = SettingState::SettingMenu;
+        invalidatePageLayout(app);
+      } else {
+        app.setting.wifiPolicySaveErrorVisible = true;
+        app.displayDirty = true;
+      }
+      break;
+    }
   }
 }
 
@@ -202,9 +238,17 @@ static void handleSettingCancel(AppState &app) {
     case SettingState::NightOffStartMinuteEdit:
     case SettingState::NightOffEndHourEdit:
     case SettingState::NightOffEndMinuteEdit:
+    case SettingState::WifiPolicyEdit:
       app.setting.state = SettingState::SettingMenu;
       app.setting.timeSetErrorVisible = false;
       app.setting.timeSetError[0] = '\0';
+      app.setting.wifiPolicySaveErrorVisible = false;
+      invalidatePageLayout(app);
+      break;
+    case SettingState::WifiConfigPortal:
+      // Physical Cancel has priority over any portal client or network activity.
+      app.configModeRequested = false;
+      app.setting.state = SettingState::SettingMenu;
       invalidatePageLayout(app);
       break;
   }
@@ -217,23 +261,7 @@ static void handleSettingKnob(AppState &app, int8_t steps) {
 
   switch (app.setting.state) {
     case SettingState::SettingMenu:
-      if (steps > 0) {
-        if (app.setting.selectedItem == SettingMenuItem::Brightness) {
-          app.setting.selectedItem = SettingMenuItem::TimeSet;
-        } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
-          app.setting.selectedItem = SettingMenuItem::NightScreenOff;
-        } else {
-          app.setting.selectedItem = SettingMenuItem::Brightness;
-        }
-      } else {
-        if (app.setting.selectedItem == SettingMenuItem::Brightness) {
-          app.setting.selectedItem = SettingMenuItem::NightScreenOff;
-        } else if (app.setting.selectedItem == SettingMenuItem::TimeSet) {
-          app.setting.selectedItem = SettingMenuItem::Brightness;
-        } else {
-          app.setting.selectedItem = SettingMenuItem::TimeSet;
-        }
-      }
+      app.setting.selectedItem = settingMenuMove(app.setting.selectedItem, steps);
       app.displayDirty = true;
       break;
     case SettingState::BrightnessEdit: {
@@ -284,6 +312,14 @@ static void handleSettingKnob(AppState &app, int8_t steps) {
     case SettingState::NightOffEndMinuteEdit:
       app.setting.editNightOnMinute =
           static_cast<uint8_t>(wrapValue(app.setting.editNightOnMinute + steps, 60));
+      app.displayDirty = true;
+      break;
+    case SettingState::WifiConfigPortal:
+      break;
+    case SettingState::WifiPolicyEdit:
+      app.setting.editWifiPolicy =
+          settingWifiPolicyMove(app.setting.editWifiPolicy, steps);
+      app.setting.wifiPolicySaveErrorVisible = false;
       app.displayDirty = true;
       break;
   }

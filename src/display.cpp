@@ -9,6 +9,14 @@
 using namespace AppConfig;
 
 static constexpr uint8_t GLYPH_HALF_BITS = 4;
+static constexpr uint8_t WIFI_ICON_WIDTH_PX = 8;
+static constexpr uint8_t WIFI_ICON_PAGE = OLED_PAGE_COUNT - 1;
+static constexpr uint8_t WIFI_ICON_X = OLED_WIDTH_PX - WIFI_ICON_WIDTH_PX;
+
+// One byte per column; each bit maps to a vertical pixel within SSD1306 page 7.
+static const uint8_t WIFI_CONNECTED_ICON[WIFI_ICON_WIDTH_PX] = {
+    0x04, 0x12, 0x0A, 0x6A, 0x6A, 0x0A, 0x12, 0x04,
+};
 
 enum class LineStyle : uint8_t {
   Invalid,
@@ -205,6 +213,16 @@ static void invalidateLine(uint8_t page) {
   oledLineScale[page] = 0;
 }
 
+static bool pageRegionIsValid(uint8_t x,
+                              uint8_t firstPage,
+                              uint8_t width,
+                              uint8_t pageCount) {
+  return width > 0 && pageCount > 0 &&
+         x < OLED_WIDTH_PX && firstPage < OLED_PAGE_COUNT &&
+         width <= OLED_WIDTH_PX - x &&
+         pageCount <= OLED_PAGE_COUNT - firstPage;
+}
+
 void displayBegin() {
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
   Wire.setClock(OLED_I2C_CLOCK_HZ);
@@ -311,4 +329,55 @@ void displayDrawDialog(const char *message) {
   cacheLine(TOP_PAGE + 1, LineStyle::Dialog, clipped);
   cacheLine(TOP_PAGE + 2, LineStyle::Dialog, "");
   cacheLine(BOTTOM_PAGE, LineStyle::Dialog, bottom);
+}
+
+void displayWritePageBitmap(uint8_t x,
+                            uint8_t firstPage,
+                            uint8_t width,
+                            uint8_t pageCount,
+                            const uint8_t *data) {
+  if (data == nullptr ||
+      !pageRegionIsValid(x, firstPage, width, pageCount)) {
+    return;
+  }
+
+  // Data is page-major: each byte is one vertical 8-pixel SSD1306 column.
+  for (uint8_t pageOffset = 0; pageOffset < pageCount; ++pageOffset) {
+    const uint8_t page = firstPage + pageOffset;
+    oledSetCursor(x, page);
+    const size_t dataOffset = static_cast<size_t>(pageOffset) * width;
+    for (uint8_t col = 0; col < width; ++col) {
+      oledData(data[dataOffset + col]);
+    }
+    // A later text render must repaint the full line after an overlay write.
+    invalidateLine(page);
+  }
+}
+
+void displayClearPageRegion(uint8_t x,
+                            uint8_t firstPage,
+                            uint8_t width,
+                            uint8_t pageCount) {
+  if (!pageRegionIsValid(x, firstPage, width, pageCount)) {
+    return;
+  }
+
+  for (uint8_t pageOffset = 0; pageOffset < pageCount; ++pageOffset) {
+    const uint8_t page = firstPage + pageOffset;
+    oledSetCursor(x, page);
+    for (uint8_t col = 0; col < width; ++col) {
+      oledData(0x00);
+    }
+    invalidateLine(page);
+  }
+}
+
+void displaySetWifiConnectedIcon(bool visible) {
+  if (visible) {
+    displayWritePageBitmap(WIFI_ICON_X, WIFI_ICON_PAGE, WIFI_ICON_WIDTH_PX, 1,
+                           WIFI_CONNECTED_ICON);
+    return;
+  }
+  // Explicit zeroes remove the icon even when the underlying text cache matches.
+  displayClearPageRegion(WIFI_ICON_X, WIFI_ICON_PAGE, WIFI_ICON_WIDTH_PX, 1);
 }

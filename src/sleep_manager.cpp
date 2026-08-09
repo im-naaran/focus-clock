@@ -72,6 +72,9 @@ static bool canEnterClockLightSleep(const SleepManagerState &sleepState,
          !inputAnyButtonHeldLow() &&
          !inputHasPendingDebounce() &&
          !feedbackActive(nowMs) &&
+         // Active radio work must keep the cooperative loop servicing WiFi.
+         !app.wifiRuntime.configModeRunning &&
+         !app.wifiRuntime.networkTaskActive &&
          !sleepManagerWakeHoldActive(sleepState, nowMs);
 }
 

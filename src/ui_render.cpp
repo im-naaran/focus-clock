@@ -137,10 +137,18 @@ static void renderTimer(const AppState &app, const char *rtcStatusText) {
 }
 
 static void renderSettingMenu(const AppState &app) {
+  static const char *labels[SETTING_MENU_ITEM_COUNT] = {
+      "BRIGHTNESS", "TIME SET", "NIGHT OFF", "WIFI CONFIG", "WIFI"};
+  const uint8_t selected = static_cast<uint8_t>(app.setting.selectedItem);
+  const uint8_t windowStart = settingMenuWindowStart(app.setting.selectedItem);
+  char line[18];
   displayPrintLine(2, "");
-  displayPrintLine(3, app.setting.selectedItem == SettingMenuItem::Brightness ? "> BRIGHTNESS" : "  BRIGHTNESS");
-  displayPrintLine(4, app.setting.selectedItem == SettingMenuItem::TimeSet ? "> TIME SET" : "  TIME SET");
-  displayPrintLine(5, app.setting.selectedItem == SettingMenuItem::NightScreenOff ? "> NIGHT OFF" : "  NIGHT OFF");
+  for (uint8_t row = 0; row < SETTING_MENU_VISIBLE_ROWS; ++row) {
+    const uint8_t index = windowStart + row;
+    snprintf(line, sizeof(line), "%c %s", index == selected ? '>' : ' ',
+             labels[index]);
+    displayPrintLine(3 + row, line);
+  }
   displayPrintLine(6, "");
   displayPrintLine(7, "");
 }
@@ -222,6 +230,8 @@ static void renderNightOffEdit(const AppState &app) {
     case SettingState::BrightnessEdit:
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
+    case SettingState::WifiConfigPortal:
+    case SettingState::WifiPolicyEdit:
       break;
   }
 
@@ -230,8 +240,73 @@ static void renderNightOffEdit(const AppState &app) {
   displayPrintLine(7, "");
 }
 
+static void renderWifiConfigPortal(const AppState &app) {
+  const WifiConfigPortalPhase phase = settingWifiConfigPortalPhase(
+      app.wifiRuntime.configModeRunning,
+      app.wifiRuntime.apClientConnected);
+  if (phase == WifiConfigPortalPhase::Starting) {
+    displayPrintLine(1, "");
+    displayPrintLine(2, "");
+    displayPrintLineCentered(3, "STARTING AP");
+    displayPrintLine(4, "");
+    displayPrintLine(5, "");
+    displayPrintLine(6, "");
+    displayPrintLineCentered(7, "CANCEL TO EXIT");
+    return;
+  }
+  if (phase == WifiConfigPortalPhase::ConnectPhone) {
+    displayPrintLine(1, "");
+    displayPrintLineCentered(2, "CONNECT PHONE");
+    displayPrintLineCentered(3, "OPEN WIFI");
+    displayPrintLineCentered(4, app.wifiRuntime.apSsid);
+    displayPrintLineCentered(5, "OPEN NETWORK");
+    displayPrintLine(6, "");
+    displayPrintLineCentered(7, "CANCEL TO EXIT");
+    return;
+  }
+
+  char protocol[9] = {};
+  const char *address = app.wifiRuntime.portalUrl;
+  const char *separator = strstr(app.wifiRuntime.portalUrl, "://");
+  if (separator != nullptr) {
+    const size_t protocolLength =
+        static_cast<size_t>(separator - app.wifiRuntime.portalUrl) + 3;
+    if (protocolLength < sizeof(protocol)) {
+      memcpy(protocol, app.wifiRuntime.portalUrl, protocolLength);
+      protocol[protocolLength] = '\0';
+      address = separator + 3;
+    }
+  }
+  displayPrintLine(1, "");
+  displayPrintLineCentered(2, "OPEN IN BROWSER");
+  displayPrintLineCentered(3, protocol[0] != '\0' ? protocol
+                                                   : app.wifiRuntime.portalUrl);
+  displayPrintLineCentered(4, address);
+  displayPrintLine(5, "");
+  displayPrintLine(6, "");
+  displayPrintLineCentered(7, "CANCEL TO EXIT");
+}
+
+static void renderWifiPolicyEdit(const AppState &app) {
+  displayPrintLine(2, "");
+  displayPrintLine(3, "WIFI POLICY");
+  displayPrintLineCentered(4,
+                           app.setting.editWifiPolicy == WifiPolicy::Auto
+                               ? "AUTO"
+                               : "OFF");
+  displayPrintLine(5, "");
+  displayPrintLine(6, "");
+  displayPrintLine(7, "");
+  if (app.setting.wifiPolicySaveErrorVisible) {
+    displayDrawDialog("SAVE FAILED");
+  }
+}
+
 static void renderSetting(const AppState &app) {
-  renderHeader("SETTING", app, true);
+  const bool wifiConfigPage =
+      app.setting.state == SettingState::WifiConfigPortal;
+  renderHeader(wifiConfigPage ? "WIFI CONFIG" : "SETTING", app,
+               !wifiConfigPage);
   displayPrintLine(1, "");
 
   switch (app.setting.state) {
@@ -252,6 +327,12 @@ static void renderSetting(const AppState &app) {
     case SettingState::NightOffEndMinuteEdit:
       renderNightOffEdit(app);
       break;
+    case SettingState::WifiConfigPortal:
+      renderWifiConfigPortal(app);
+      break;
+    case SettingState::WifiPolicyEdit:
+      renderWifiPolicyEdit(app);
+      break;
   }
 }
 
@@ -267,4 +348,9 @@ void renderApp(const AppState &app, const char *rtcStatusText) {
       renderSetting(app);
       break;
   }
+  const bool showWifi = app.mode != AppMode::Setting &&
+                        app.wifiRuntime.networkTaskActive &&
+                        app.wifiRuntime.connectionState ==
+                            WifiConnectionState::Connected;
+  displaySetWifiConnectedIcon(showWifi);
 }

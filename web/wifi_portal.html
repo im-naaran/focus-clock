@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Focus Clock Settings</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #18201c;
+        --muted: #65706a;
+        --line: #cbd3ce;
+        --accent: #12643d;
+        --danger: #a22d27;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #fff;
+        color: var(--ink);
+        font: 15px/1.45 system-ui, sans-serif;
+      }
+
+      header,
+      main {
+        width: min(100% - 28px, 560px);
+        margin: auto;
+      }
+
+      header {
+        padding: 24px 0 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 23px;
+        letter-spacing: 0;
+      }
+
+      header p {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
+
+      form {
+        padding: 8px 0 28px;
+      }
+
+      fieldset {
+        margin: 0;
+        padding: 20px 0;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      legend {
+        margin-bottom: 12px;
+        padding: 0;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .full {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      input,
+      select,
+      button {
+        width: 100%;
+        min-height: 42px;
+        padding: 8px 10px;
+        border: 1px solid #aeb8b2;
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+      }
+
+      input[type="checkbox"] {
+        width: 20px;
+        min-height: 20px;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      button {
+        width: auto;
+        cursor: pointer;
+        font-weight: 650;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.danger {
+        border-color: #d3a4a1;
+        color: var(--danger);
+      }
+
+      button:disabled,
+      input:disabled,
+      select:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding-top: 20px;
+      }
+
+      .status {
+        min-height: 22px;
+        margin: 14px 0 0;
+        color: var(--muted);
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.good {
+        color: var(--accent);
+      }
+
+      #scanResults {
+        display: none;
+      }
+
+      @media (max-width: 420px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .full {
+          grid-column: auto;
+        }
+
+        .actions button {
+          flex: 1 1 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Focus Clock</h1>
+      <p id="connectionState">Settings</p>
+    </header>
+
+    <main>
+      <form id="settings">
+        <fieldset>
+          <legend>Device</legend>
+          <div class="grid">
+            <label>
+              Brightness
+              <select id="brightness">
+                <option value="1">1 - Darkest</option>
+                <option value="2">2 - Dark</option>
+                <option value="3">3 - Medium</option>
+                <option value="4">4 - Bright</option>
+                <option value="5">5 - Brightest</option>
+              </select>
+            </label>
+
+            <label>
+              Clock time
+              <input id="rtc" type="datetime-local" step="1">
+            </label>
+
+            <button id="browserTime" type="button">Use browser time</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Night screen</legend>
+          <div class="grid">
+            <label class="check full">
+              <input id="nightEnabled" type="checkbox">
+              Enabled
+            </label>
+
+            <label>
+              Screen off
+              <input id="nightOff" type="time">
+            </label>
+
+            <label>
+              Screen on
+              <input id="nightOn" type="time">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>WiFi</legend>
+          <div class="grid">
+            <label>
+              Policy
+              <select id="wifiPolicy">
+                <option>OFF</option>
+                <option>AUTO</option>
+              </select>
+            </label>
+
+            <label>
+              Network name
+              <input id="ssid" maxlength="32" autocomplete="off">
+            </label>
+
+            <label class="full">
+              Password
+              <input
+                id="password"
+                type="password"
+                maxlength="64"
+                autocomplete="new-password"
+              >
+            </label>
+
+            <button id="scan" type="button">Scan networks</button>
+
+            <label id="scanResults" class="full">
+              Networks
+              <select id="networks"></select>
+            </label>
+
+            <button id="test" type="button" disabled>Test connection</button>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button class="primary" id="save" type="submit">Save settings</button>
+          <button class="danger" id="clear" type="button">Clear WiFi</button>
+        </div>
+
+        <p id="status" class="status" role="status"></p>
+      </form>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const form = $("settings");
+      const statusElement = $("status");
+      const controls = [...form.querySelectorAll("input, select, button")];
+
+      let baseline = "";
+      let rtcDirty = false;
+      let testing = false;
+      let scanRunning = false;
+      let retryMs = 750;
+
+      function setStatus(text, kind = "") {
+        statusElement.textContent = text;
+        statusElement.className = `status ${kind}`;
+      }
+
+      function pad(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      function localDateTimeValue(date) {
+        return [
+          `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+          `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+        ].join("T");
+      }
+
+      function timeValue(minutes) {
+        return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+      }
+
+      function minuteValue(value) {
+        const [hour, minute] = value.split(":");
+        return Number(hour) * 60 + Number(minute);
+      }
+
+      function wifiKey() {
+        return `${$("wifiPolicy").value}\n${$("ssid").value}`;
+      }
+
+      function wifiDirty() {
+        return wifiKey() !== baseline || $("password").value.length > 0;
+      }
+
+      function updateLocks() {
+        controls.forEach((element) => {
+          element.disabled = testing;
+        });
+        $("test").disabled =
+          testing || scanRunning || wifiDirty() || !$("ssid").value;
+        $("scan").disabled = testing || scanRunning;
+        $("clear").disabled = testing;
+      }
+
+      async function api(path, options) {
+        const response = await fetch(path, options);
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error?.message || "Request failed");
+        }
+        return body.data;
+      }
+
+      function postBody(values) {
+        return {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          },
+          body: new URLSearchParams(values),
+        };
+      }
+
+      function setRuntime(runtime) {
+        $("connectionState").textContent =
+          runtime.connection === "connected"
+            ? runtime.staIp || "WiFi connected"
+            : "Settings";
+
+        if (runtime.test === "connecting") {
+          testing = true;
+          updateLocks();
+          pollTest();
+          return true;
+        }
+        if (runtime.test === "succeeded") {
+          setStatus("Last connection test succeeded", "good");
+          return true;
+        }
+        if (runtime.test === "failed" || runtime.test === "timedOut") {
+          setStatus(
+            runtime.test === "timedOut"
+              ? "Last connection test timed out"
+              : "Last connection test failed",
+            "error",
+          );
+          return true;
+        }
+        return false;
+      }
+
+      async function load() {
+        try {
+          const data = await api("/api/config");
+          $("brightness").value = data.brightness;
+          $("nightEnabled").checked = data.night.enabled;
+          $("nightOff").value = timeValue(data.night.offMinute);
+          $("nightOn").value = timeValue(data.night.onMinute);
+          $("wifiPolicy").value = data.wifi.policy;
+          $("ssid").value = data.wifi.ssid;
+          $("password").value = "";
+          baseline = wifiKey();
+
+          if (data.rtc.valid) {
+            $("rtc").value =
+              `${data.rtc.year}-${pad(data.rtc.month)}-${pad(data.rtc.date)}` +
+              `T${pad(data.rtc.hour)}:${pad(data.rtc.minute)}:${pad(data.rtc.second)}`;
+          }
+
+          rtcDirty = false;
+          const hasTestStatus = setRuntime(data.runtime);
+          updateLocks();
+          if (!hasTestStatus) {
+            setStatus("Ready", "good");
+          }
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      }
+
+      form.addEventListener("input", updateLocks);
+      $("rtc").addEventListener("input", () => {
+        rtcDirty = true;
+      });
+      $("browserTime").addEventListener("click", () => {
+        $("rtc").value = localDateTimeValue(new Date());
+        rtcDirty = true;
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (testing) {
+          return;
+        }
+
+        const values = {
+          brightness: $("brightness").value,
+          nightEnabled: $("nightEnabled").checked ? "1" : "0",
+          nightOffMinute: String(minuteValue($("nightOff").value)),
+          nightOnMinute: String(minuteValue($("nightOn").value)),
+          wifiPolicy: $("wifiPolicy").value,
+          ssid: $("ssid").value,
+          password: $("password").value,
+          setRtc: rtcDirty ? "1" : "0",
+        };
+
+        if (rtcDirty) {
+          const date = new Date($("rtc").value);
+          Object.assign(values, {
+            rtcYear: String(date.getFullYear()),
+            rtcMonth: String(date.getMonth() + 1),
+            rtcDate: String(date.getDate()),
+            rtcHour: String(date.getHours()),
+            rtcMinute: String(date.getMinutes()),
+            rtcSecond: String(date.getSeconds()),
+          });
+        }
+
+        try {
+          setStatus("Saving...");
+          await api("/api/config", postBody(values));
+          await load();
+          setStatus("Settings saved", "good");
+        } catch (error) {
+          const message = error.message;
+          await load();
+          setStatus(message, "error");
+        }
+      });
+
+      $("clear").addEventListener("click", async () => {
+        if (!confirm("Clear the saved WiFi network and password?")) {
+          return;
+        }
+        try {
+          await api("/api/wifi/clear", postBody({ confirm: "1" }));
+          $("ssid").value = "";
+          $("password").value = "";
+          baseline = wifiKey();
+          updateLocks();
+          setStatus("WiFi configuration cleared", "good");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      $("scan").addEventListener("click", async () => {
+        try {
+          scanRunning = true;
+          updateLocks();
+          setStatus("Scanning...");
+          await api("/api/wifi/scan", postBody({ start: "1" }));
+          pollScan();
+        } catch (error) {
+          scanRunning = false;
+          updateLocks();
+          setStatus(error.message, "error");
+        }
+      });
+
+      async function pollScan() {
+        try {
+          const data = await api("/api/wifi/scan");
+          if (data.state === "running") {
+            setTimeout(pollScan, 600);
+            return;
+          }
+
+          scanRunning = false;
+          updateLocks();
+          if (data.state === "failed") {
+            setStatus("Scan failed", "error");
+            return;
+          }
+
+          const list = $("networks");
+          list.innerHTML = '<option value="">Select a network</option>';
+          data.results.forEach((network) => {
+            const option = document.createElement("option");
+            option.value = network.ssid;
+            option.textContent =
+              `${network.ssid}  ${network.rssi} dBm` +
+              (network.secure ? "  secured" : "");
+            list.append(option);
+          });
+          $("scanResults").style.display = "grid";
+          setStatus(`${data.results.length} networks found`, "good");
+        } catch (error) {
+          scanRunning = false;
+          updateLocks();
+          setStatus(error.message, "error");
+        }
+      }
+
+      $("networks").addEventListener("change", () => {
+        if ($("networks").value) {
+          $("ssid").value = $("networks").value;
+        }
+        updateLocks();
+      });
+
+      $("test").addEventListener("click", async () => {
+        const accepted = confirm(
+          "The Focus Clock access point may be briefly unavailable. " +
+            "Keep this page open and do not refresh.",
+        );
+        if (!accepted) {
+          return;
+        }
+
+        testing = true;
+        retryMs = 750;
+        updateLocks();
+        setStatus("Starting connection test...");
+        try {
+          await api("/api/wifi/test", postBody({ start: "1" }));
+          pollTest();
+        } catch (error) {
+          testing = false;
+          updateLocks();
+          setStatus(error.message, "error");
+        }
+      });
+
+      async function pollTest() {
+        if (!testing) {
+          return;
+        }
+        try {
+          const data = await api("/api/wifi/test");
+          retryMs = 750;
+          if (data.state === "connecting") {
+            setStatus("Testing connection...");
+            setTimeout(pollTest, retryMs);
+            return;
+          }
+
+          testing = false;
+          updateLocks();
+          const succeeded = data.state === "succeeded";
+          const message = succeeded
+            ? "Connection succeeded"
+            : data.state === "timedOut"
+              ? "Connection timed out"
+              : "Connection failed";
+          setStatus(message, succeeded ? "good" : "error");
+        } catch (error) {
+          // AP channel changes can interrupt fetch while the device test continues.
+          setStatus("Access point temporarily unavailable. Reconnecting...", "error");
+          retryMs = Math.min(retryMs * 1.5, 3000);
+          setTimeout(pollTest, retryMs);
+        }
+      }
+
+      addEventListener("beforeunload", (event) => {
+        // This prompt is best-effort; the device remains authoritative.
+        if (testing) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      });
+
+      load();
+    </script>
+  </body>
+</html>
