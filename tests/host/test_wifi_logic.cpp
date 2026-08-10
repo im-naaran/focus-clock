@@ -28,6 +28,19 @@ void testPolicyValues() {
          "maximum invalid policy falls back to OFF");
 }
 
+void testConsumerMask() {
+  const uint8_t timeSync = static_cast<uint8_t>(WifiConsumer::TimeSync);
+  expect(timeSync != 0, "Time Sync consumer uses a non-zero bit");
+  expect((timeSync & static_cast<uint8_t>(timeSync - 1)) == 0,
+         "Time Sync consumer uses exactly one bit");
+
+  const uint8_t otherConsumer = 1 << 1;
+  uint8_t mask = timeSync | otherConsumer;
+  mask &= static_cast<uint8_t>(~timeSync);
+  expect(mask == otherConsumer,
+         "releasing Time Sync preserves another consumer bit");
+}
+
 void testTargetModes() {
   WifiModeInputs inputs;
   expect(wifiTargetModeFor(inputs) == WifiTargetMode::Off,
@@ -332,6 +345,7 @@ void testNetworkConfigBlob() {
 
 int main() {
   testPolicyValues();
+  testConsumerMask();
   testTargetModes();
   testModeTransitions();
   testScanNormalization();

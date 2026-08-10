@@ -15,12 +15,16 @@ static constexpr const char *KEY_NIGHT_SCREEN_OFF_ENABLED = "nightOffEn";
 static constexpr const char *KEY_NIGHT_SCREEN_OFF_MINUTE = "nightOffMin";
 static constexpr const char *KEY_NIGHT_SCREEN_ON_MINUTE = "nightOnMin";
 static constexpr const char *KEY_NETWORK_CONFIG = "netCfg";
+static constexpr const char *KEY_SCHEDULED_TASK_RECORDS = "taskRuns";
+static constexpr const char *KEY_TIME_SYNC_RESULT = "timeSync";
 
 static Preferences preferences;
 static bool preferencesOpen = false;
 static uint8_t lastSavedBrightness = 0;
 static NightScreenOffConfig lastSavedNightScreenOff;
 static NetworkConfig lastSavedNetworkConfig;
+static ScheduledTaskRecords lastSavedScheduledTaskRecords;
+static uint32_t lastSavedTimeSyncSuccessEpoch = 0;
 
 static NightScreenOffConfig defaultNightScreenOffConfig() {
   NightScreenOffConfig config;
@@ -221,6 +225,130 @@ bool persistenceSaveNetworkConfig(const NetworkConfig &config) {
   }
 
   lastSavedNetworkConfig = config;
+  return true;
+}
+
+ScheduledTaskRecords persistenceLoadScheduledTaskRecords() {
+  ScheduledTaskRecords records;
+  if (!persistenceBegin()) {
+    lastSavedScheduledTaskRecords = records;
+    return records;
+  }
+
+  const size_t storedSize =
+      preferences.getBytesLength(KEY_SCHEDULED_TASK_RECORDS);
+  if (storedSize == 0) {
+    lastSavedScheduledTaskRecords = records;
+    return records;
+  }
+
+  PersistedScheduledTaskRecordsV1 blob;
+  const size_t readSize = storedSize == sizeof(blob)
+                              ? preferences.getBytes(
+                                    KEY_SCHEDULED_TASK_RECORDS,
+                                    &blob,
+                                    sizeof(blob))
+                              : 0;
+  const TaskPersistenceBlobError error =
+      persistenceDecodeScheduledTaskRecords(&blob, readSize, records);
+  if (error != TaskPersistenceBlobError::None) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Invalid scheduled task records: error=%u\n",
+                    static_cast<unsigned int>(error));
+    }
+    records = ScheduledTaskRecords{};
+  }
+  lastSavedScheduledTaskRecords = records;
+  return records;
+}
+
+bool persistenceSaveScheduledTaskRecords(const ScheduledTaskRecords &records) {
+  PersistedScheduledTaskRecordsV1 blob;
+  if (!persistenceEncodeScheduledTaskRecords(records, blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Skip invalid scheduled task records save");
+    }
+    return false;
+  }
+  if (memcmp(records.lastAttemptDateKeys,
+             lastSavedScheduledTaskRecords.lastAttemptDateKeys,
+             sizeof(records.lastAttemptDateKeys)) == 0) {
+    return true;
+  }
+  if (!persistenceBegin()) {
+    return false;
+  }
+
+  const size_t written = preferences.putBytes(
+      KEY_SCHEDULED_TASK_RECORDS, &blob, sizeof(blob));
+  if (written != sizeof(blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Scheduled task records save failed");
+    }
+    return false;
+  }
+
+  // Cache only a complete blob write so RAM never claims an unsaved record.
+  lastSavedScheduledTaskRecords = records;
+  return true;
+}
+
+uint32_t persistenceLoadLastTimeSyncSuccessEpoch() {
+  uint32_t epoch = 0;
+  if (!persistenceBegin()) {
+    lastSavedTimeSyncSuccessEpoch = 0;
+    return 0;
+  }
+
+  const size_t storedSize = preferences.getBytesLength(KEY_TIME_SYNC_RESULT);
+  if (storedSize == 0) {
+    lastSavedTimeSyncSuccessEpoch = 0;
+    return 0;
+  }
+
+  PersistedTimeSyncResultV1 blob;
+  const size_t readSize = storedSize == sizeof(blob)
+                              ? preferences.getBytes(KEY_TIME_SYNC_RESULT,
+                                                     &blob,
+                                                     sizeof(blob))
+                              : 0;
+  const TaskPersistenceBlobError error =
+      persistenceDecodeTimeSyncResult(&blob, readSize, epoch);
+  if (error != TaskPersistenceBlobError::None) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.printf("Invalid time sync result: error=%u\n",
+                    static_cast<unsigned int>(error));
+    }
+    epoch = 0;
+  }
+  lastSavedTimeSyncSuccessEpoch = epoch;
+  return epoch;
+}
+
+bool persistenceSaveLastTimeSyncSuccessEpoch(uint32_t epoch) {
+  PersistedTimeSyncResultV1 blob;
+  if (!persistenceEncodeTimeSyncResult(epoch, blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Skip invalid time sync result save");
+    }
+    return false;
+  }
+  if (epoch == lastSavedTimeSyncSuccessEpoch) {
+    return true;
+  }
+  if (!persistenceBegin()) {
+    return false;
+  }
+
+  const size_t written =
+      preferences.putBytes(KEY_TIME_SYNC_RESULT, &blob, sizeof(blob));
+  if (written != sizeof(blob)) {
+    if (ENABLE_SERIAL_LOGGING) {
+      Serial.println("Time sync result save failed");
+    }
+    return false;
+  }
+  lastSavedTimeSyncSuccessEpoch = epoch;
   return true;
 }
 

@@ -17,15 +17,21 @@ void testMenuNavigation() {
   expect(settingMenuMove(SettingMenuItem::Brightness, 1) ==
              SettingMenuItem::TimeSet,
          "forward navigation advances one item");
+  expect(settingMenuMove(SettingMenuItem::TimeSet, 1) ==
+             SettingMenuItem::TimeSync,
+         "forward navigation reaches time sync");
   expect(settingMenuMove(SettingMenuItem::WifiPolicy, 1) ==
              SettingMenuItem::Brightness,
-         "forward navigation wraps after the fifth item");
+         "forward navigation wraps after the sixth item");
   expect(settingMenuMove(SettingMenuItem::Brightness, -1) ==
              SettingMenuItem::WifiPolicy,
-         "reverse navigation wraps to the fifth item");
+         "reverse navigation wraps to the sixth item");
   expect(settingMenuMove(SettingMenuItem::WifiConfig, -2) ==
-             SettingMenuItem::TimeSet,
+             SettingMenuItem::TimeSync,
          "aggregated reverse steps preserve their magnitude");
+  expect(settingMenuMove(SettingMenuItem::TimeSync, 4) ==
+             SettingMenuItem::Brightness,
+         "aggregated forward steps wrap across the menu");
 }
 
 void testMenuWindow() {
@@ -33,11 +39,13 @@ void testMenuWindow() {
          "first item uses the first window");
   expect(settingMenuWindowStart(SettingMenuItem::TimeSet) == 0,
          "second item remains in the first window");
-  expect(settingMenuWindowStart(SettingMenuItem::NightScreenOff) == 1,
-         "middle item is centered");
-  expect(settingMenuWindowStart(SettingMenuItem::WifiConfig) == 2,
-         "fourth item advances to the last window");
-  expect(settingMenuWindowStart(SettingMenuItem::WifiPolicy) == 2,
+  expect(settingMenuWindowStart(SettingMenuItem::TimeSync) == 1,
+         "time sync is centered in the second window");
+  expect(settingMenuWindowStart(SettingMenuItem::NightScreenOff) == 2,
+         "night screen item is centered");
+  expect(settingMenuWindowStart(SettingMenuItem::WifiConfig) == 3,
+         "wifi config advances to the last window");
+  expect(settingMenuWindowStart(SettingMenuItem::WifiPolicy) == 3,
          "last item remains visible in the last window");
 }
 

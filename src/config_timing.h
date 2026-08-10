@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stdint.h>
 
 namespace AppConfig {
 
@@ -16,7 +16,11 @@ static constexpr uint32_t SETTING_BLINK_MS = 500;
 static constexpr uint32_t RTC_SHORT_REFRESH_MS = 1000;
 static constexpr uint32_t RTC_NORMAL_MAX_REFRESH_MS = 30000;
 static constexpr uint32_t RTC_MINUTE_REFRESH_GRACE_MS = 50;
-static constexpr uint32_t RTC_AUTO_INIT_DELAY_MS = 2000;
+static constexpr uint16_t TIME_SYNC_DAILY_MINUTE = 8 * 60;
+static constexpr uint32_t TIME_SYNC_WIFI_DEADLINE_MS = 20000;
+static constexpr uint32_t TIME_SYNC_SNTP_DEADLINE_MS = 10000;
+static constexpr uint32_t TIME_SYNC_RETRY_DELAY_MS = 3000;
+static constexpr uint8_t TIME_SYNC_MAX_ATTEMPTS = 2;
 
 // Input feedback.
 static constexpr uint16_t INPUT_LED_FLASH_MS = 300;

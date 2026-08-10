@@ -4,8 +4,8 @@
 
 #include "network_types.h"
 
-// Concrete consumers are added with their business feature, not predeclared here.
-enum class WifiConsumer : uint8_t {};
+static_assert(static_cast<uint8_t>(WifiConsumer::TimeSync) != 0,
+              "WiFi consumers must use non-zero mask bits");
 
 struct WifiServiceState {
   WifiTargetMode currentMode = WifiTargetMode::Off;

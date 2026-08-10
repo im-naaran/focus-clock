@@ -18,6 +18,13 @@ static constexpr uint32_t WIFI_STA_RECONNECT_MS = 30000;
 static constexpr uint32_t WIFI_MODE_RETRY_MS = 1000;
 static constexpr uint8_t WIFI_SCAN_MAX_RESULTS = 20;
 
+static constexpr const char *TIME_SYNC_NTP_SERVERS[] = {
+    "ntp.aliyun.com",
+    "pool.ntp.org",
+    "time.google.com",
+};
+static constexpr int32_t TIME_SYNC_UTC_OFFSET_SECONDS = 8 * 60 * 60;
+
 static constexpr size_t WIFI_SSID_MAX_BYTES = 32;
 static constexpr size_t WIFI_PASSWORD_MAX_BYTES = 64;
 static constexpr size_t HTTP_MAX_BODY_BYTES = 1024;

@@ -6,9 +6,6 @@
 #include "rtc.h"
 
 struct RtcServiceState {
-  RtcAutoInitState autoInitState = RtcAutoInitState::Idle;
-  bool autoInitAttempted = false;
-  uint32_t autoInitDueMs = 0;
   uint32_t nextReadDueMs = 0;
   uint32_t lastReadMs = 0;
 };

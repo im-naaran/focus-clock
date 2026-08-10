@@ -11,7 +11,9 @@
 #include "persistence.h"
 #include "rtc.h"
 #include "rtc_service.h"
+#include "scheduled_task_service.h"
 #include "sleep_manager.h"
+#include "time_sync_task.h"
 #include "timer_model.h"
 #include "ui_render.h"
 #include "wifi_portal.h"
@@ -24,6 +26,8 @@ static RtcServiceState rtcService;
 static SleepManagerState sleepState;
 static WifiServiceState wifiService;
 static WifiPortalState wifiPortal;
+static ScheduledTaskServiceState scheduledTaskService;
+static TimeSyncTaskState timeSyncTask;
 
 static void disableBluetooth() {
   esp_bt_controller_disable();
@@ -118,9 +122,12 @@ void setup() {
     app.config.nightScreenOnMinute = nightConfig.onMinute;
   }
   app.networkConfig = persistenceLoadNetworkConfig();
+  app.lastTimeSyncSuccessEpoch = persistenceLoadLastTimeSyncSuccessEpoch();
   displaySetContrast(brightnessLevelToContrast(app.config.brightnessLevel));
 
   const uint32_t nowMs = millis();
+  scheduledTaskServiceBegin(scheduledTaskService);
+  timeSyncTaskBegin(timeSyncTask);
   wifiServiceBegin(wifiService, nowMs);
   wifiPortalBegin(wifiPortal, app, rtcService, wifiService);
   displayPowerBegin(app, nowMs);
@@ -156,11 +163,29 @@ void loop() {
   rtcServiceUpdate(rtcService, app, nowMs);
   appUpdateSettingBlink(app, nowMs);
 
-  // Service reconciles radio state before HTTP observes AP readiness; both
-  // advance before rendering and sleep so Cancel and network work stay live.
+  // Scheduler runs before WiFi so a dispatched plugin can request its consumer
+  // in this loop; Time Sync runs after WiFi to observe the latest STA state.
+  ScheduledTaskId dispatch;
+  if (scheduledTaskServiceUpdate(scheduledTaskService, app.rtcTime, dispatch)) {
+    switch (dispatch) {
+      case ScheduledTaskId::TimeSync:
+        timeSyncTaskStart(timeSyncTask, wifiService, app.networkConfig, nowMs);
+        break;
+      case ScheduledTaskId::Count:
+        break;
+    }
+  }
+
   if (wifiServiceUpdate(wifiService, app.networkConfig,
                         app.configModeRequested, app.wifiRuntime, nowMs)) {
     app.displayDirty = true;
+  }
+  timeSyncTaskUpdate(timeSyncTask, wifiService, app.networkConfig,
+                     app.wifiRuntime, rtcService, app, nowMs);
+  TaskRunResult taskResult;
+  if (timeSyncTaskTakeResult(timeSyncTask, taskResult)) {
+    scheduledTaskServiceConsumeResult(
+        scheduledTaskService, ScheduledTaskId::TimeSync, taskResult);
   }
   wifiPortalUpdate(wifiPortal, app.configModeRequested, app.wifiRuntime);
 

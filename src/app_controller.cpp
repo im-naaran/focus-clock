@@ -129,6 +129,10 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
         case SettingMenuItem::TimeSet:
           enterTimeEdit(app, nowMs);
           break;
+        case SettingMenuItem::TimeSync:
+          app.setting.state = SettingState::TimeSyncInfo;
+          invalidatePageLayout(app);
+          break;
         case SettingMenuItem::NightScreenOff:
           enterNightOffEdit(app, nowMs);
           break;
@@ -142,8 +146,6 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
           enterWifiPolicyEdit(app);
           break;
       }
-      break;
-    case SettingState::BrightnessEdit:
       break;
     case SettingState::TimeEditHour:
       app.setting.state = SettingState::TimeEditMinute;
@@ -172,6 +174,10 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
           setTimeEditError(app, "RTC WRITE FAIL");
         }
       }
+      break;
+    case SettingState::BrightnessEdit:
+    case SettingState::TimeSyncInfo:
+    case SettingState::WifiConfigPortal:
       break;
     case SettingState::NightOffEnabledEdit:
       app.setting.state = SettingState::NightOffStartHourEdit;
@@ -202,8 +208,6 @@ static void handleSettingConfirm(AppState &app, RtcServiceState &rtcService, uin
       app.setting.state = SettingState::SettingMenu;
       invalidatePageLayout(app);
       break;
-    case SettingState::WifiConfigPortal:
-      break;
     case SettingState::WifiPolicyEdit: {
       NetworkConfig candidate = app.networkConfig;
       candidate.policy = app.setting.editWifiPolicy;
@@ -233,6 +237,7 @@ static void handleSettingCancel(AppState &app) {
       break;
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
+    case SettingState::TimeSyncInfo:
     case SettingState::NightOffEnabledEdit:
     case SettingState::NightOffStartHourEdit:
     case SettingState::NightOffStartMinuteEdit:
@@ -314,6 +319,7 @@ static void handleSettingKnob(AppState &app, int8_t steps) {
           static_cast<uint8_t>(wrapValue(app.setting.editNightOnMinute + steps, 60));
       app.displayDirty = true;
       break;
+    case SettingState::TimeSyncInfo:
     case SettingState::WifiConfigPortal:
       break;
     case SettingState::WifiPolicyEdit:

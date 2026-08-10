@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "network_types.h"
+#include "persistence_codec.h"
 
 struct NightScreenOffConfig {
   bool enabled = true;
@@ -17,4 +18,8 @@ NightScreenOffConfig persistenceLoadNightScreenOff();
 bool persistenceSaveNightScreenOff(const NightScreenOffConfig &config);
 NetworkConfig persistenceLoadNetworkConfig();
 bool persistenceSaveNetworkConfig(const NetworkConfig &config);
+ScheduledTaskRecords persistenceLoadScheduledTaskRecords();
+bool persistenceSaveScheduledTaskRecords(const ScheduledTaskRecords &records);
+uint32_t persistenceLoadLastTimeSyncSuccessEpoch();
+bool persistenceSaveLastTimeSyncSuccessEpoch(uint32_t epoch);
 void persistenceEnd();

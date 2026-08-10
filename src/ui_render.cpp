@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "display.h"
+#include "time_sync_logic.h"
 #include "timer_model.h"
 
 using namespace AppConfig;
@@ -38,7 +39,7 @@ static void renderHeader(const char *title, const AppState &app, bool showCurren
     if (app.rtcOk && app.rtcTime.valid) {
       snprintf(timeText, sizeof(timeText), "%02u:%02u", app.rtcTime.hour, app.rtcTime.minute);
     } else {
-      snprintf(timeText, sizeof(timeText), "--:--");
+      snprintf(timeText, sizeof(timeText), "12:00");
     }
     for (uint8_t i = 0; i < 5; ++i) {
       line[HEADER_TIME_COL + i] = timeText[i];
@@ -72,7 +73,7 @@ static void renderClock(const AppState &app, const char *rtcStatusText) {
     displayPrintScaledLineCentered(2, line, 2);
     renderDateOrStatus(app, rtcStatusText);
   } else {
-    displayPrintScaledLineCentered(2, "--:--", 2);
+    displayPrintScaledLineCentered(2, "12:00", 2);
     displayPrintLineCentered(5, rtcStatusText != nullptr ? rtcStatusText : "RTC READ FAIL");
   }
   displayPrintLine(6, "");
@@ -138,10 +139,11 @@ static void renderTimer(const AppState &app, const char *rtcStatusText) {
 
 static void renderSettingMenu(const AppState &app) {
   static const char *labels[SETTING_MENU_ITEM_COUNT] = {
-      "BRIGHTNESS", "TIME SET", "NIGHT OFF", "WIFI CONFIG", "WIFI"};
+      "BRIGHTNESS", "TIME SET", "TIME SYNC", "SCREEN SCHEDULE",
+      "WIFI CONFIG", "WIFI"};
   const uint8_t selected = static_cast<uint8_t>(app.setting.selectedItem);
   const uint8_t windowStart = settingMenuWindowStart(app.setting.selectedItem);
-  char line[18];
+  char line[LINE_CACHE_LEN];
   displayPrintLine(2, "");
   for (uint8_t row = 0; row < SETTING_MENU_VISIBLE_ROWS; ++row) {
     const uint8_t index = windowStart + row;
@@ -187,6 +189,26 @@ static void renderTimeEdit(const AppState &app) {
   }
 }
 
+static void renderTimeSyncInfo(const AppState &app) {
+  char localTime[20] = {};
+  const bool hasLastSuccess = timeSyncFormatLocalEpoch(
+      app.lastTimeSyncSuccessEpoch, localTime, sizeof(localTime));
+
+  displayPrintLine(2, "");
+  displayPrintLineCentered(3, "LAST SUCCESS");
+  if (hasLastSuccess) {
+    // The shared formatter guarantees YYYY-MM-DD HH:MM:SS on success.
+    localTime[10] = '\0';
+    displayPrintLineCentered(4, localTime);
+    displayPrintLineCentered(5, localTime + 11);
+  } else {
+    displayPrintLineCentered(4, "NEVER");
+    displayPrintLine(5, "");
+  }
+  displayPrintLine(6, "");
+  displayPrintLine(7, "");
+}
+
 static void formatNightOffTime(const AppState &app, bool editingStart, char *buffer, size_t bufferSize) {
   const bool blink = app.setting.showBlinkField;
   const uint8_t hour = editingStart ? app.setting.editNightOffHour : app.setting.editNightOnHour;
@@ -211,7 +233,7 @@ static void renderNightOffEdit(const AppState &app) {
 
   switch (app.setting.state) {
     case SettingState::NightOffEnabledEdit:
-      displayPrintLine(3, "NIGHT OFF");
+      displayPrintLine(3, "SCREEN SCHEDULE");
       displayPrintLineCentered(4, app.setting.editNightOffEnabled ? "ON" : "OFF");
       break;
     case SettingState::NightOffStartHourEdit:
@@ -230,6 +252,7 @@ static void renderNightOffEdit(const AppState &app) {
     case SettingState::BrightnessEdit:
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
+    case SettingState::TimeSyncInfo:
     case SettingState::WifiConfigPortal:
     case SettingState::WifiPolicyEdit:
       break;
@@ -305,8 +328,10 @@ static void renderWifiPolicyEdit(const AppState &app) {
 static void renderSetting(const AppState &app) {
   const bool wifiConfigPage =
       app.setting.state == SettingState::WifiConfigPortal;
-  renderHeader(wifiConfigPage ? "WIFI CONFIG" : "SETTING", app,
-               !wifiConfigPage);
+  const bool timeSyncPage = app.setting.state == SettingState::TimeSyncInfo;
+  const char *title = wifiConfigPage ? "WIFI CONFIG"
+                                    : (timeSyncPage ? "TIME SYNC" : "SETTING");
+  renderHeader(title, app, !wifiConfigPage);
   displayPrintLine(1, "");
 
   switch (app.setting.state) {
@@ -319,6 +344,9 @@ static void renderSetting(const AppState &app) {
     case SettingState::TimeEditHour:
     case SettingState::TimeEditMinute:
       renderTimeEdit(app);
+      break;
+    case SettingState::TimeSyncInfo:
+      renderTimeSyncInfo(app);
       break;
     case SettingState::NightOffEnabledEdit:
     case SettingState::NightOffStartHourEdit:

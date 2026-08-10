@@ -7,12 +7,13 @@
 enum class SettingMenuItem : uint8_t {
   Brightness,
   TimeSet,
+  TimeSync,
   NightScreenOff,
   WifiConfig,
   WifiPolicy,
 };
 
-static constexpr uint8_t SETTING_MENU_ITEM_COUNT = 5;
+static constexpr uint8_t SETTING_MENU_ITEM_COUNT = 6;
 static constexpr uint8_t SETTING_MENU_VISIBLE_ROWS = 3;
 
 enum class WifiConfigPortalPhase : uint8_t {

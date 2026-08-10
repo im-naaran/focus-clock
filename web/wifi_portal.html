@@ -95,6 +95,13 @@
         font: inherit;
       }
 
+      output {
+        min-height: 42px;
+        padding: 10px 0;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+      }
+
       input[type="checkbox"] {
         width: 20px;
         min-height: 20px;
@@ -199,12 +206,17 @@
               <input id="rtc" type="datetime-local" step="1">
             </label>
 
+            <label class="full">
+              Last successful sync
+              <output id="lastTimeSync">never</output>
+            </label>
+
             <button id="browserTime" type="button">Use browser time</button>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Night screen</legend>
+          <legend>Screen schedule</legend>
           <div class="grid">
             <label class="check full">
               <input id="nightEnabled" type="checkbox">
@@ -381,6 +393,8 @@
           $("wifiPolicy").value = data.wifi.policy;
           $("ssid").value = data.wifi.ssid;
           $("password").value = "";
+          $("lastTimeSync").textContent =
+            data.timeSync.lastSuccess ?? "never";
           baseline = wifiKey();
 
           if (data.rtc.valid) {

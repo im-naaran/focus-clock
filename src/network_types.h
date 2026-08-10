@@ -9,6 +9,10 @@ enum class WifiPolicy : uint8_t {
   Auto = 1,
 };
 
+enum class WifiConsumer : uint8_t {
+  TimeSync = 1 << 0,
+};
+
 enum class WifiTargetMode : uint8_t {
   Off,
   Ap,

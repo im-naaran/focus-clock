@@ -11,6 +11,7 @@
 #include "persistence.h"
 #include "portal_validation.h"
 #include "rtc.h"
+#include "time_sync_logic.h"
 #include "wifi_logic.h"
 
 using namespace AppConfig;
@@ -48,6 +49,14 @@ bool guardSoftAp(WebServer &server) {
   sendJsonError(server, 403, "INTERFACE_FORBIDDEN",
                 "Configuration is available only through the Focus Clock AP");
   return false;
+}
+
+void addNoStoreHeaders(WebServer &server) {
+  // The fixed portal address must not reuse a page or config from older firmware.
+  server.sendHeader("Cache-Control",
+                    "no-store, no-cache, must-revalidate, max-age=0");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "0");
 }
 
 bool validatePost(WebServer &server) {
@@ -128,12 +137,16 @@ bool appendQuoted(JsonWriter &writer, const char *value) {
 void handleConfigGet(WifiPortalState &portal) {
   WebServer &server = portal.server;
   if (!guardSoftAp(server)) return;
+  addNoStoreHeaders(server);
   if (portal.app == nullptr) {
     sendJsonError(server, 503, "NOT_READY", "Application state is not ready");
     return;
   }
   const AppState &app = *portal.app;
-  char response[1536];
+  char lastTimeSync[20] = {};
+  const bool hasLastTimeSync = timeSyncFormatLocalEpoch(
+      app.lastTimeSyncSuccessEpoch, lastTimeSync, sizeof(lastTimeSync));
+  char response[1664];
   JsonWriter writer;
   jsonWriterBegin(writer, response, sizeof(response));
   bool ok = jsonWriterAppend(writer, "{\"ok\":true,\"data\":{\"brightness\":") &&
@@ -155,6 +168,10 @@ void handleConfigGet(WifiPortalState &portal) {
             jsonWriterAppend(writer, ",\"ssid\":") && appendQuoted(writer, app.networkConfig.staSsid) &&
             jsonWriterAppend(writer, ",\"passwordConfigured\":") &&
             appendBool(writer, app.networkConfig.staPassword[0] != '\0') &&
+            // Device-side formatting prevents browser timezone conversion.
+            jsonWriterAppend(writer, "},\"timeSync\":{\"lastSuccess\":") &&
+            (hasLastTimeSync ? appendQuoted(writer, lastTimeSync)
+                             : jsonWriterAppend(writer, "null")) &&
             jsonWriterAppend(writer, "},\"runtime\":{\"configMode\":") &&
             appendBool(writer, app.wifiRuntime.configModeRunning) &&
             jsonWriterAppend(writer, ",\"apClient\":") &&
@@ -476,6 +493,7 @@ void configureRoutes(WifiPortalState &state) {
 
   server.on("/", HTTP_GET, [&server]() {
     if (!guardSoftAp(server)) return;
+    addNoStoreHeaders(server);
     const size_t embeddedSize = static_cast<size_t>(
         WIFI_PORTAL_PAGE_END - WIFI_PORTAL_PAGE_START);
     const size_t pageSize = embeddedSize > 0 ? embeddedSize - 1 : 0;

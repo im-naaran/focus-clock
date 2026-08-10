@@ -19,6 +19,7 @@ enum class SettingState : uint8_t {
   BrightnessEdit,
   TimeEditHour,
   TimeEditMinute,
+  TimeSyncInfo,
   NightOffEnabledEdit,
   NightOffStartHourEdit,
   NightOffStartMinuteEdit,
@@ -26,13 +27,6 @@ enum class SettingState : uint8_t {
   NightOffEndMinuteEdit,
   WifiConfigPortal,
   WifiPolicyEdit,
-};
-
-enum class RtcAutoInitState : uint8_t {
-  Idle,
-  Waiting,
-  Writing,
-  Failed,
 };
 
 enum class ButtonId : uint8_t {
@@ -89,6 +83,7 @@ struct AppState {
   NetworkConfig networkConfig;
   RtcTime rtcTime;
   bool rtcOk = false;
+  uint32_t lastTimeSyncSuccessEpoch = 0;
   // Configuration mode is an explicit runtime request and is never persisted.
   bool configModeRequested = false;
   WifiRuntimeView wifiRuntime;
